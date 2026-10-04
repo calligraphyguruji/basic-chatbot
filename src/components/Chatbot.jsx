@@ -72,9 +72,10 @@ function Chatbot() {
       const rawBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
       // Strip trailing slashes and accidental /api suffix
       const apiBaseUrl = rawBaseUrl.trim().replace(/\/+$/, '').replace(/\/api$/, '');
+      const endpoint = apiBaseUrl ? `${apiBaseUrl}/api/chat` : '/api/chat';
 
       try {
-        const response = await fetch(`${apiBaseUrl}/api/chat`, {
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

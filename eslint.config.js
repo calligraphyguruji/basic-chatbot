@@ -19,7 +19,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['server/**/*.{js,cjs,mjs}', 'vite.config.js', 'eslint.config.js'],
+    files: ['api/**/*.{js,cjs,mjs}', 'server/**/*.{js,cjs,mjs}', 'vite.config.js', 'eslint.config.js'],
     extends: [js.configs.recommended],
     languageOptions: {
       globals: {

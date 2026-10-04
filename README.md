@@ -1,6 +1,6 @@
 # React Chatbot with Google Gemini AI
 
-A modern, beginner-friendly chatbot interface built with **React.js (React 19)**, **JavaScript**, **Vite**, and an **Express + Google Gemini API** backend, styled with a warm **Saffron (`#FF9933`)** theme and minimalist plain CSS.
+A modern, beginner-friendly chatbot interface built with **React.js (React 19)**, **JavaScript**, **Vite**, and **Google Gemini AI**, styled with a warm **Saffron (`#FF9933`)** theme and minimalist plain CSS.
 
 ---
 
@@ -10,12 +10,12 @@ A modern, beginner-friendly chatbot interface built with **React.js (React 19)**
 - **Saffron Visual Theme**: Consistent `#FF9933` saffron accent applied to the Send button, hover state (`#E68A00`), and circular Bot/User avatars with white icons.
 - **Hybrid Intelligence**:
   - **Local Responses**: Instant responses for greetings (`hello`, `hi`), date (`today's date`), time (`current time`), identity (`what is your name`), and status (`how are you`).
-  - **Google Gemini Integration**: Complex programming or general questions are securely forwarded to the backend (`POST /api/chat`) running the official Google Gen AI SDK.
-- **Secure Backend Layer**: The `GEMINI_API_KEY` is kept strictly on the Node.js backend (`server/server.js`) and never exposed to client-side code or browser bundles.
+  - **Google Gemini Integration**: Complex questions are securely processed via server-side API (`POST /api/chat`) running the official Google Gen AI SDK.
+- **Vercel & Node.js Ready**: Supports direct deployment to **Vercel** via serverless functions (`api/chat.js`) as well as local Express server (`server/server.js`).
+- **Secure Backend Layer**: The `GEMINI_API_KEY` is kept strictly server-side and never exposed to client-side code or browser bundles.
 - **Dynamic Messaging via `.map()`**: Renders all messages dynamically from React state.
-- **Animated Typing Indicator**: Displays smooth animated pulsing dots (`• • •`) while local or Gemini responses are generating.
+- **Animated Typing Indicator**: Displays smooth animated pulsing dots (`• • •`) while answers are generating.
 - **Robust Error Handling**: Handles network, server, and API key errors gracefully with friendly fallback messages.
-- **Initial Greeting**: Greets the user with `"Hello! How can I help you?"` on first load.
 - **Responsive & Accessible**: Seamless fluid layout for mobile, tablet, and desktop viewports.
 
 ---
@@ -24,8 +24,10 @@ A modern, beginner-friendly chatbot interface built with **React.js (React 19)**
 
 ```
 basic-chatbot/
+├── api/
+│   └── chat.js             # Vercel serverless function (POST /api/chat)
 ├── server/
-│   └── server.js           # Express backend connecting to Google Gemini API
+│   └── server.js           # Local Express server delegating to api/chat.js
 ├── src/
 │   ├── components/
 │   │   ├── Avatars.jsx         # Saffron circular SVG Bot & User avatars
@@ -39,6 +41,7 @@ basic-chatbot/
 │   ├── App.css                 # Fixed bottom layout and saffron styling
 │   ├── index.css               # Global reset and theme variables
 │   └── main.jsx                # React DOM entry point
+├── vercel.json             # Vercel SPA and API routing configuration
 ├── .env.example            # Environment variables template
 ├── index.html
 ├── package.json
@@ -49,8 +52,12 @@ basic-chatbot/
 
 ## Environment Variables
 
-Create a `.env` file in the root directory:
+### For Vercel Deployment
+Add this in **Vercel Dashboard > Project Settings > Environment Variables**:
+- `GEMINI_API_KEY`: Your Google Gemini API key (from [Google AI Studio](https://aistudio.google.com/app/apikey))
+- `GEMINI_MODEL`: `gemini-2.0-flash` (or `gemini-2.5-flash`, optional)
 
+### For Local Development (.env)
 ```env
 GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-2.5-flash
@@ -61,37 +68,30 @@ PORT=5001
 
 ---
 
-## Getting Started
+## Getting Started Locally
 
 ### 1. Install Dependencies
 ```bash
 npm install
 ```
 
-### 2. Configure Environment
-```bash
-cp .env.example .env
-# Edit .env and insert your Gemini API key
-```
-
-### 3. Start Backend Server
+### 2. Start Local Servers
+In terminal 1 (Backend):
 ```bash
 npm run server
 ```
-Runs Express server at `http://localhost:5001`.
 
-### 4. Start Frontend
+In terminal 2 (Frontend):
 ```bash
 npm run dev
 ```
-Runs Vite dev server at `http://localhost:5173`.
 
-### 5. Build for Production
-```bash
-npm run build
-```
+---
 
-### 6. Run Linter
-```bash
-npm run lint
-```
+## Deploying to Vercel (All-In-One)
+
+1. Push your repository to GitHub.
+2. Import the repository in **Vercel**.
+3. Under **Environment Variables**, add:
+   - `GEMINI_API_KEY` = your Gemini API key
+4. Click **Deploy**. Both the React frontend and `/api/chat` serverless function deploy together automatically.
