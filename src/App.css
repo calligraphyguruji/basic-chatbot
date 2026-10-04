@@ -1,0 +1,205 @@
+.app-main {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  background-color: #ffffff;
+  padding: 36px 20px;
+}
+
+.chatbot-container {
+  width: 100%;
+  max-width: 900px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 1. Chat Input Form */
+.chat-input-form {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-bottom: 36px;
+}
+
+.chat-input {
+  flex: 1;
+  padding: 12px 18px;
+  font-size: 16px;
+  font-family: inherit;
+  color: #1a1a1a;
+  background-color: #ffffff;
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.chat-input::placeholder {
+  color: var(--placeholder-color);
+  font-weight: 400;
+}
+
+.chat-input:focus {
+  border-color: var(--input-border-focus);
+  box-shadow: 0 0 0 2px rgba(27, 135, 85, 0.15);
+}
+
+.send-button {
+  padding: 12px 28px;
+  font-size: 16px;
+  font-weight: 500;
+  font-family: inherit;
+  color: #ffffff;
+  background-color: var(--primary-green);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+  white-space: nowrap;
+}
+
+.send-button:hover:not(:disabled) {
+  background-color: var(--primary-green-hover);
+}
+
+.send-button:disabled {
+  background-color: var(--primary-green-disabled);
+  opacity: 0.8;
+  cursor: not-allowed;
+}
+
+/* 2. Messages List */
+.messages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  width: 100%;
+}
+
+/* Message Rows */
+.chat-message-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+}
+
+.bot-row {
+  justify-content: flex-start;
+}
+
+.user-row {
+  justify-content: flex-end;
+}
+
+/* Avatars */
+.avatar {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  border-radius: 50%;
+  background-color: var(--primary-green);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  flex-shrink: 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+/* Message Bubbles */
+.message-bubble {
+  background-color: var(--bubble-bg);
+  color: #212529;
+  font-size: 16px;
+  line-height: 1.45;
+  padding: 12px 20px;
+  border-radius: 10px;
+  max-width: 72%;
+  word-break: break-word;
+}
+
+/* 3. Typing Indicator Animation */
+.typing-bubble {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 20px;
+  min-height: 20px;
+}
+
+.typing-bubble .dot {
+  width: 7px;
+  height: 7px;
+  background-color: #6c757d;
+  border-radius: 50%;
+  display: inline-block;
+  animation: typingBounce 1.2s infinite ease-in-out;
+}
+
+.typing-bubble .dot:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.typing-bubble .dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-bubble .dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typingBounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  30% {
+    transform: translateY(-5px);
+    opacity: 1;
+  }
+}
+
+/* 4. Responsive Design */
+@media (max-width: 640px) {
+  .app-main {
+    padding: 20px 14px;
+  }
+
+  .chat-input-form {
+    gap: 8px;
+    margin-bottom: 24px;
+  }
+
+  .chat-input {
+    padding: 10px 14px;
+    font-size: 15px;
+  }
+
+  .send-button {
+    padding: 10px 20px;
+    font-size: 15px;
+  }
+
+  .messages-list {
+    gap: 20px;
+  }
+
+  .chat-message-row {
+    gap: 10px;
+  }
+
+  .avatar {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+  }
+
+  .message-bubble {
+    font-size: 15px;
+    padding: 10px 16px;
+    max-width: 82%;
+  }
+}
