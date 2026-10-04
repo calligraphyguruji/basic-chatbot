@@ -102,16 +102,45 @@ export default async function handler(req, res) {
     const configuredModel = rawModel.replace(/^models\//, '');
 
     // 3. Format chat history for Gemini multi-turn conversation
-    // Gemini SDK expects: { role: 'user' | 'model', parts: [{ text: string }] }
+    // Gemini SDK Rules:
+    // - History MUST start with role: 'user' (cannot start with initial bot greeting)
+    // - Turns must alternate strictly: 'user' -> 'model' -> 'user' -> 'model'
+    // - Must not end with 'user' when sendMessage(message) is appending the new user message
     const formattedHistory = [];
     if (Array.isArray(history)) {
-      for (const item of history) {
-        if (item && item.text && typeof item.text === 'string' && item.text.trim()) {
+      // Exclude the current user message if it was already appended to history
+      let items = [...history];
+      if (
+        items.length > 0 &&
+        items[items.length - 1]?.sender === 'user' &&
+        items[items.length - 1]?.text?.trim() === message.trim()
+      ) {
+        items.pop();
+      }
+
+      // Filter valid non-empty items
+      const validItems = items.filter(
+        (it) => it && typeof it.text === 'string' && it.text.trim()
+      );
+
+      // Find first user turn to drop any initial greeting from bot
+      const firstUserIndex = validItems.findIndex((it) => it.sender === 'user');
+      if (firstUserIndex !== -1) {
+        let lastRole = null;
+        for (let i = firstUserIndex; i < validItems.length; i++) {
+          const item = validItems[i];
           const role = item.sender === 'user' ? 'user' : 'model';
-          formattedHistory.push({
-            role,
-            parts: [{ text: item.text.trim() }],
-          });
+          if (role !== lastRole) {
+            formattedHistory.push({
+              role,
+              parts: [{ text: item.text.trim() }],
+            });
+            lastRole = role;
+          }
+        }
+        // Ensure history ends with 'model' so that chat.sendMessage(message) provides the next 'user' turn
+        if (formattedHistory.length > 0 && formattedHistory[formattedHistory.length - 1].role === 'user') {
+          formattedHistory.pop();
         }
       }
     }
