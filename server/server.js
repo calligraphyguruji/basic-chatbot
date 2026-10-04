@@ -9,8 +9,9 @@ dotenv.config({ path: '.env.local', override: true });
 const app = express();
 const PORT = process.env.PORT || 5001;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const JSON_BODY_LIMIT = process.env.JSON_BODY_LIMIT || '128kb';
 
-// Robust CORS: Allow any origin or normalize CLIENT_ORIGIN (trim trailing slashes)
+// Robust CORS: Allow local tools when unset, otherwise enforce CLIENT_ORIGIN.
 const rawOrigin = process.env.CLIENT_ORIGIN;
 const cleanClientOrigin = rawOrigin ? rawOrigin.trim().replace(/\/+$/, '') : null;
 
@@ -24,13 +25,13 @@ app.use(
         return callback(null, true);
       }
 
-      return callback(null, true);
+      return callback(new Error('Not allowed by CORS'), false);
     },
     credentials: true,
   })
 );
 
-app.use(express.json());
+app.use(express.json({ limit: JSON_BODY_LIMIT }));
 
 // Health check endpoints (supports /, /health, and /api/health)
 app.get(['/', '/health', '/api/health'], (req, res) => {

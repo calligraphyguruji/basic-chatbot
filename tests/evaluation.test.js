@@ -108,7 +108,7 @@ async function runTests() {
   await handler(
     {
       method: 'POST',
-      body: { message: 'Noida weather', stream: true },
+      body: { message: 'weather', stream: true },
     },
     {
       setHeader: () => {},
