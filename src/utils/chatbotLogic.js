@@ -8,8 +8,22 @@
 export function getBotResponse(userInput) {
   const query = userInput.trim().toLowerCase();
 
-  // 1. Dynamic date using JavaScript's Date object
-  if (query.includes('date') || query.includes('today')) {
+  // 1. Bot identity check
+  if (
+    query.includes('what is your name') ||
+    query.includes("what's your name") ||
+    query.includes('who are you')
+  ) {
+    return "I'm your React chatbot.";
+  }
+
+  // 2. Bot condition / status check
+  if (query.includes('how are you')) {
+    return "I'm doing great! How can I help you?";
+  }
+
+  // 3. Dynamic date using word boundary check (\bdate\b, \btoday\b)
+  if (/\b(date|today)\b/i.test(query)) {
     const today = new Date();
     const formattedDate = today.toLocaleDateString('en-US', {
       weekday: 'long',
@@ -20,8 +34,8 @@ export function getBotResponse(userInput) {
     return `Today is ${formattedDate}.`;
   }
 
-  // 2. Dynamic time using JavaScript's Date object
-  if (query.includes('time') || query.includes('clock')) {
+  // 4. Dynamic time using word boundary check (\btime\b, \bclock\b)
+  if (/\b(time|clock)\b/i.test(query)) {
     const now = new Date();
     const formattedTime = now.toLocaleTimeString('en-US', {
       hour: 'numeric',
@@ -31,31 +45,8 @@ export function getBotResponse(userInput) {
     return `The current time is ${formattedTime}.`;
   }
 
-  // 3. Bot identity
-  if (
-    query.includes('what is your name') ||
-    query.includes("what's your name") ||
-    query.includes('who are you')
-  ) {
-    return "I'm your React chatbot.";
-  }
-
-  // 4. Bot condition / status
-  if (query.includes('how are you')) {
-    return "I'm doing great! How can I help you?";
-  }
-
-  // 5. Greetings
-  if (
-    query.startsWith('hello') ||
-    query.startsWith('hi') ||
-    query.startsWith('hey') ||
-    query === 'hello' ||
-    query === 'hi' ||
-    query === 'hey' ||
-    query.includes('hello chatbot') ||
-    query.includes('hi chatbot')
-  ) {
+  // 5. Greetings using word boundary check (\bhello\b, \bhi\b, \bhey\b)
+  if (/\b(hello|hi|hey)\b/i.test(query)) {
     return 'Hello! How can I help you?';
   }
 
