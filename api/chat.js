@@ -20,15 +20,38 @@ export default async function handler(req, res) {
 
   // Health check endpoint (GET /api/chat)
   if (req.method === 'GET') {
+    let apiKey = process.env.GEMINI_API_KEY;
+    if (apiKey) {
+      apiKey = apiKey.trim().replace(/^["']|["']$/g, '');
+    }
     const hasKey = Boolean(
-      process.env.GEMINI_API_KEY &&
-        process.env.GEMINI_API_KEY !== 'YOUR_GEMINI_API_KEY' &&
-        process.env.GEMINI_API_KEY !== 'your_api_key_here'
+      apiKey &&
+        apiKey !== 'YOUR_GEMINI_API_KEY' &&
+        apiKey !== 'your_api_key_here'
     );
+    let availableModels = [];
+    let listError = null;
+    if (hasKey) {
+      try {
+        const fetchRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+        if (fetchRes.ok) {
+          const data = await fetchRes.json();
+          availableModels = (data.models || [])
+            .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
+            .map((m) => m.name.replace(/^models\//, ''));
+        } else {
+          listError = `HTTP ${fetchRes.status}: ${await fetchRes.text()}`;
+        }
+      } catch (err) {
+        listError = err?.message || String(err);
+      }
+    }
     return res.status(200).json({
       status: 'ok',
       hasApiKey: hasKey,
       model: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+      availableModels,
+      listError,
     });
   }
 
@@ -103,6 +126,7 @@ export default async function handler(req, res) {
 
     let replyText = '';
     let lastError = null;
+    const modelErrors = [];
 
     // 4. Send the conversation/message to Gemini
     for (const modelName of candidateModels) {
@@ -127,6 +151,7 @@ export default async function handler(req, res) {
         }
       } catch (err) {
         lastError = err;
+        modelErrors.push(`${modelName} -> ${err?.message || err}`);
         console.warn(`[Gemini API] Model "${modelName}" failed:`, err?.message || err);
 
         // Immediate stop on auth error or exhausted quota
@@ -137,6 +162,45 @@ export default async function handler(req, res) {
         ) {
           throw err;
         }
+      }
+    }
+
+    // If configured candidate models failed, dynamically fetch available models
+    if (!replyText) {
+      try {
+        const fetchRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+        if (fetchRes.ok) {
+          const data = await fetchRes.json();
+          const dynamicModels = (data.models || [])
+            .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
+            .map((m) => m.name.replace(/^models\//, ''))
+            .filter((m) => !candidateModels.includes(m));
+
+          for (const modelName of dynamicModels) {
+            try {
+              const model = genAI.getGenerativeModel({ model: modelName });
+              if (formattedHistory.length > 0) {
+                const chat = model.startChat({ history: formattedHistory });
+                const result = await chat.sendMessage(message.trim());
+                const response = await result.response;
+                replyText = response.text();
+              } else {
+                const result = await model.generateContent(message.trim());
+                const response = await result.response;
+                replyText = response.text();
+              }
+
+              if (replyText) {
+                break;
+              }
+            } catch (err) {
+              lastError = err;
+              modelErrors.push(`${modelName} -> ${err?.message || err}`);
+            }
+          }
+        }
+      } catch (dynamicErr) {
+        console.warn('Dynamic model fetch failed:', dynamicErr);
       }
     }
 
@@ -168,9 +232,10 @@ export default async function handler(req, res) {
       errorDetail = 'Gemini API quota exceeded.';
     }
 
+    const modelDetails = (typeof modelErrors !== 'undefined' && modelErrors.length > 0) ? ` [${modelErrors.join(' | ')}]` : ` (${errorMsg})`;
     return res.status(status >= 400 && status < 600 ? status : 500).json({
       error: 'Failed to generate response',
-      details: `${errorDetail} (${errorMsg})`,
+      details: `${errorDetail}${modelDetails}`,
       reply: friendlyMessage,
     });
   }
