@@ -55,7 +55,7 @@ basic-chatbot/
 ### For Vercel Deployment
 Add this in **Vercel Dashboard > Project Settings > Environment Variables**:
 - `GEMINI_API_KEY`: Your Google Gemini API key (from [Google AI Studio](https://aistudio.google.com/app/apikey))
-- `GEMINI_MODEL`: `gemini-2.0-flash` (or `gemini-2.5-flash`, optional)
+- `GEMINI_MODEL`: `gemini-3.8-flash` (or auto-discovered, optional)
 
 ### For Local Development (.env)
 ```env
