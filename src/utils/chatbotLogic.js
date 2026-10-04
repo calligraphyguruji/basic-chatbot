@@ -18,7 +18,15 @@ export function getLocalBotResponse(userInput) {
     return "I'm your React chatbot.";
   }
 
-  // 2. Bot condition / status check
+  // 2. Creator and Owner check
+  if (
+    /^(who\s+(builds|built|made|created)\s+you|who\s+is\s+your\s+(creator|builder|developer))\??$/i.test(query) ||
+    /^(who\s+owns\s+you|who\s+is\s+your\s+owner)\??$/i.test(query)
+  ) {
+    return 'Mr. Aman Mishra';
+  }
+
+  // 3. Bot condition / status check
   if (
     query === 'how are you' ||
     query === 'how are you doing' ||
