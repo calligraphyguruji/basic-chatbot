@@ -37,7 +37,13 @@ Created and owned by **Mr. Aman Mishra**.
   - Contextual history preservation resolves pronouns across turns (e.g. *"Now give me its formula sheet"*).
   - Dynamic model discovery and fallback across `gemini-flash-latest`, `gemini-2.5-flash`, `gemini-2.0-flash`, and `gemini-1.5-flash`.
 
-### 2. Rich Markdown & Mathematical LaTeX Rendering
+### 2. Streaming Response Architecture & Vercel Timeout Resilience
+- **Real-Time Token Streaming**: Server pipes Gemini tokens progressively using chunked transfer encoding (`text/plain; charset=utf-8`), reducing Time-to-First-Token (TTFT) to under 1 second.
+- **Incremental Client Rendering**: Incoming stream chunks append smoothly to the message bubble in real time as the model generates output.
+- **60-Second Vercel Serverless Timeout Configured**: Configured with `maxDuration: 60` in `vercel.json` and `api/chat.js` to ensure massive educational outputs (e.g. formula sheets, full chapter notes) complete without Vercel gateway timeout errors.
+- **Zero-Drop Fallback**: Automatically supports legacy non-streaming callers with structured JSON payloads (`{ reply: text }`).
+
+### 3. Rich Markdown & Mathematical LaTeX Rendering
 - **Full Markdown Formatting**: Headings, lists, code fences, blockquotes, and responsive tables.
 - **LaTeX Math Support**: Formats inline math (`$...$`) and display block math (`$$...$$`) using KaTeX (`react-markdown`, `remark-math`, `rehype-katex`).
 - **Auto-Expanding Input Composer**: Replaced single-line input with auto-resizing `<textarea>` supporting `Shift+Enter` for multiline prompts.

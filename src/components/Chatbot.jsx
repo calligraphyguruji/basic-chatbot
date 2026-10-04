@@ -118,13 +118,15 @@ function Chatbot() {
           body: JSON.stringify({
             message: userText,
             history: nextHistory,
+            stream: true,
           }),
           signal: controller.signal,
         });
 
-        const data = await response.json().catch(() => null);
+        const contentType = response.headers.get('content-type') || '';
 
         if (!response.ok) {
+          const data = await response.json().catch(() => null);
           console.error('Gemini API response:', data);
           const serverErrorMessage =
             data?.reply ||
@@ -143,16 +145,53 @@ function Chatbot() {
           return;
         }
 
-        const botReply = data?.reply || "I didn't receive a response.";
+        if (contentType.includes('text/plain') && response.body) {
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          const botMessageId = Date.now() + 1;
+          let streamedText = '';
 
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: Date.now() + 1,
-            sender: 'bot',
-            text: botReply,
-          },
-        ]);
+          // Dismiss typing indicator as soon as stream begins
+          setIsTyping(false);
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: botMessageId,
+              sender: 'bot',
+              text: '',
+            },
+          ]);
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            streamedText += decoder.decode(value, { stream: true });
+            setMessages((prev) =>
+              prev.map((m) => (m.id === botMessageId ? { ...m, text: streamedText } : m))
+            );
+          }
+
+          if (!streamedText.trim()) {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === botMessageId
+                  ? { ...m, text: "I didn't receive a response. Please try again." }
+                  : m
+              )
+            );
+          }
+        } else {
+          const data = await response.json().catch(() => null);
+          const botReply = data?.reply || "I didn't receive a response.";
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: Date.now() + 1,
+              sender: 'bot',
+              text: botReply,
+            },
+          ]);
+        }
       } catch (err) {
         console.error('Chat API error:', err);
         const fallbackText =

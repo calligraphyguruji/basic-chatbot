@@ -214,6 +214,11 @@ async function fetchLiveWeather(location) {
 }
 
 
+export const config = {
+  maxDuration: 60,
+};
+export const maxDuration = 60;
+
 /**
  * Vercel Serverless Function Handler
  * Endpoint: POST /api/chat
@@ -288,7 +293,29 @@ export default async function handler(req, res) {
       }
     }
 
-    const { message, history } = body || {};
+    const { message, history, stream: wantsStream } = body || {};
+
+    const sendReply = (text) => {
+      const trimmed = (text || '').trim();
+      if (wantsStream) {
+        if (typeof res.writeHead === 'function') {
+          res.writeHead(200, {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Transfer-Encoding': 'chunked',
+            'Cache-Control': 'no-cache, no-transform',
+            'X-Accel-Buffering': 'no',
+          });
+        }
+        if (typeof res.write === 'function') {
+          res.write(trimmed);
+        }
+        if (typeof res.end === 'function') {
+          res.end();
+        }
+        return;
+      }
+      return res.status(200).json({ reply: trimmed });
+    };
 
     // 1. Validate that the message exists
     if (!message || typeof message !== 'string' || !message.trim()) {
@@ -335,13 +362,13 @@ export default async function handler(req, res) {
       const location = extractWeatherLocation(message, history);
       if (!location) {
         const isHindiUser = /[\u0900-\u097F]|mausam|tapman/i.test(message);
-        return res.status(200).json({
-          reply: /[\u0900-\u097F]/.test(message)
+        return sendReply(
+          /[\u0900-\u097F]/.test(message)
             ? 'ज़रूर! कौन सी सिटी या पिन कोड का मौसम देखना है?'
             : isHindiUser
             ? 'Zaroor! Kaunsi city ya PIN code ka mausam dekhna hai?'
-            : 'Sure! Which city or ZIP/PIN code should I check the weather for?',
-        });
+            : 'Sure! Which city or ZIP/PIN code should I check the weather for?'
+        );
       }
 
       // Fetch verified real-time weather
@@ -374,13 +401,13 @@ State the weather and temperature clearly, mention humidity, and append "*Source
           const response = await result.response;
           const reply = extractTextFromResponse(response);
           if (reply && !reply.toLowerCase().includes("don't have access") && !reply.toLowerCase().includes("cannot provide")) {
-            return res.status(200).json({ reply: reply.trim() });
+            return sendReply(reply.trim());
           }
         } catch (weatherErr) {
           console.warn('[Live Weather Gemini format fallback]:', weatherErr?.message || weatherErr);
         }
 
-        return res.status(200).json({ reply: directReply });
+        return sendReply(directReply);
       }
       // If live weather data is unavailable or non-locational, smoothly fall through to general knowledge pipeline
     }
@@ -530,6 +557,46 @@ State the weather and temperature clearly, mention humidity, and append "*Source
           });
         }
 
+        if (wantsStream) {
+          let streamResult;
+          if (formattedHistory.length > 0) {
+            const chat = model.startChat({
+              history: formattedHistory,
+              generationConfig,
+            });
+            streamResult = await chat.sendMessageStream(effectiveUserMessage);
+          } else {
+            streamResult = await model.generateContentStream(effectiveUserMessage);
+          }
+
+          let streamStarted = false;
+          for await (const chunk of streamResult.stream) {
+            const chunkText = chunk.text();
+            if (chunkText) {
+              if (!streamStarted) {
+                if (typeof res.writeHead === 'function') {
+                  res.writeHead(200, {
+                    'Content-Type': 'text/plain; charset=utf-8',
+                    'Transfer-Encoding': 'chunked',
+                    'Cache-Control': 'no-cache, no-transform',
+                    'X-Accel-Buffering': 'no',
+                  });
+                }
+                streamStarted = true;
+              }
+              if (typeof res.write === 'function') {
+                res.write(chunkText);
+              }
+            }
+          }
+          if (streamStarted) {
+            if (typeof res.end === 'function') {
+              res.end();
+            }
+            return;
+          }
+        }
+
         if (formattedHistory.length > 0) {
           const chat = model.startChat({
             history: formattedHistory,
@@ -551,6 +618,12 @@ State the weather and temperature clearly, mention humidity, and append "*Source
         lastError = err;
         modelErrors.push(`${modelName} -> ${err?.message || err}`);
         console.warn(`[Gemini API] Model "${modelName}" failed:`, err?.message || err);
+
+        // Guard against header corruption if stream already started
+        if (res.headersSent) {
+          if (typeof res.end === 'function') res.end();
+          return;
+        }
 
         // Immediate stop on auth error or exhausted quota
         if (
@@ -609,15 +682,11 @@ State the weather and temperature clearly, mention humidity, and append "*Source
     // 5. Extract the generated text correctly
     if (!replyText) {
       if (lastError) throw lastError;
-      return res.status(200).json({
-        reply: 'The AI model completed the request without generating text. Please try phrasing your prompt differently.',
-      });
+      return sendReply('The AI model completed the request without generating text. Please try phrasing your prompt differently.');
     }
 
-    // 6. Return JSON { reply: "actual Gemini response" }
-    return res.status(200).json({
-      reply: replyText.trim(),
-    });
+    // 6. Return response
+    return sendReply(replyText);
   } catch (error) {
     const errorMsg = error?.message || 'Unknown error';
     const status = error?.status || 500;
@@ -638,6 +707,11 @@ State the weather and temperature clearly, mention humidity, and append "*Source
     } else if (errorMsg.includes('SAFETY') || errorMsg.includes('HARM_CATEGORY')) {
       friendlyMessage = 'The response was blocked by safety policy filters. Please rephrase your query.';
       errorDetail = 'AI safety policy block.';
+    }
+
+    if (res.headersSent) {
+      if (typeof res.end === 'function') res.end();
+      return;
     }
 
     return res.status(status >= 400 && status < 600 ? status : 500).json({

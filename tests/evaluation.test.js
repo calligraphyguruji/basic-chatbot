@@ -99,6 +99,41 @@ async function runTests() {
   // TEST 16: Response containing mathematical formulas in LaTeX syntax
   assert(t7.contextText.includes(String.raw`$E = h\nu`) && t7.contextText.includes(String.raw`\lambda`), 'TEST 16: LaTeX math syntax present in retrieval and generation context');
 
+  // TEST 17: Streaming mode support (verifies text/plain chunked streaming protocol)
+  let streamHeaders = null;
+  let streamChunks = [];
+  let streamEnded = false;
+  const prevEnvKey = process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY = 'mock_key_for_test';
+  await handler(
+    {
+      method: 'POST',
+      body: { message: 'Noida weather', stream: true },
+    },
+    {
+      setHeader: () => {},
+      writeHead: (status, headers) => {
+        streamHeaders = { status, ...headers };
+      },
+      write: (chunk) => {
+        streamChunks.push(chunk);
+      },
+      end: () => {
+        streamEnded = true;
+      },
+      status: () => ({ json: () => {} }),
+    }
+  );
+  process.env.GEMINI_API_KEY = prevEnvKey;
+  assert(
+    streamHeaders &&
+      streamHeaders.status === 200 &&
+      streamHeaders['Content-Type'].includes('text/plain') &&
+      streamChunks.length > 0 &&
+      streamEnded,
+    'TEST 17: Streaming mode yields chunked text/plain response'
+  );
+
   console.log(`\n========================================`);
   console.log(`Evaluation Completed: ${passed}/${total} tests passed.`);
   console.log(`========================================\n`);
