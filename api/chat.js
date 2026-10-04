@@ -61,7 +61,10 @@ export default async function handler(req, res) {
     }
 
     // 2. Read GEMINI_API_KEY from the server environment
-    const apiKey = process.env.GEMINI_API_KEY;
+    let apiKey = process.env.GEMINI_API_KEY;
+    if (apiKey) {
+      apiKey = apiKey.trim().replace(/^["']|["']$/g, '');
+    }
     if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY' || apiKey === 'your_api_key_here') {
       console.error('[Gemini Server Error]: GEMINI_API_KEY is not configured in Vercel environment variables.');
       return res.status(500).json({
@@ -72,7 +75,8 @@ export default async function handler(req, res) {
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const configuredModel = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+    const rawModel = (process.env.GEMINI_MODEL || 'gemini-1.5-flash').trim().replace(/^["']|["']$/g, '');
+    const configuredModel = rawModel.replace(/^models\//, '');
 
     // 3. Format chat history for Gemini multi-turn conversation
     // Gemini SDK expects: { role: 'user' | 'model', parts: [{ text: string }] }
@@ -165,7 +169,7 @@ export default async function handler(req, res) {
 
     return res.status(status >= 400 && status < 600 ? status : 500).json({
       error: 'Failed to generate response',
-      details: errorDetail,
+      details: `${errorDetail} (${errorMsg})`,
       reply: friendlyMessage,
     });
   }
