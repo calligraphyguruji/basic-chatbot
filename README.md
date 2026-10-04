@@ -32,15 +32,29 @@ Created and owned by **Mr. Aman Mishra**.
 - **Prompt Injection Defense**: Guardrails reject unauthorized system prompt extractions, internal instructions reveals, or hidden reasoning queries.
 - **Chain-of-Thought Sanitization**: Dedicated filter strips internal scratchpad tokens (`* Draft 1:`, `* Context:`, `<thought>`, `Self-Correction:`) so only polished, final responses reach the user interface.
 
-### 4. Voice Speaking & Audio Input System
-- **Text-to-Speech (TTS) Voice Playback**:
+### 3. Real-Time Web Grounding & Weather
+- **Live Weather Observation**:
+  - Contextual city or PIN/ZIP code lookup (e.g. `"weather in Noida"`, `"201310"`, `"delhi ka mausam"`).
+  - Automatically queries live meteorological data and formats natural temperature, humidity, and condition summaries.
+- **Current Event & Information Search**:
+  - Automatically grounds queries for latest news, sports, stock/crypto prices, and product releases.
+
+### 4. Hindi & Hinglish Multilingual Intelligence
+- **Trilingual Fluency**: Fully conversant in **English**, **Hindi (हिंदी)**, and **Hinglish** (e.g. `"kaise ho"`, `"tumhe kisne banaya"`, `"aaj mausam kaisa hai"`, `"React kya hota hai"`).
+- **Localized Intent Matching**: Understands questions in Latin and Devanagari script for identity, greetings, date, time, and creator attribution.
+- **Accurate Attribution**: Directly answers `"Mr. Aman Mishra"` in both English and Hindi/Hinglish inquiries.
+
+### 5. Voice Speaking & Audio Input System
+- **Text-to-Speech (TTS) Female Voice Playback**:
   - Interactive audio speaker buttons next to every bot message bubble.
-  - Powered by native browser `window.speechSynthesis` with zero external latency or API costs.
-  - Automatically strips markdown formatting (`*`, `**`, code blocks, URLs) for natural audio pronunciation.
+  - Automatically selects high-quality female voices (e.g. *Veena*, *Lekha*, *Google Hindi*, *Samantha*, *Microsoft Aria/Swara*).
+  - Automatically switches between Hindi (`hi-IN`) and Indian English (`en-IN`) voice synthesis based on script and vocabulary for authentic pronunciation.
+  - Strips markdown formatting (`*`, `**`, code blocks, URLs) for clean speech output.
   - Real-time active visual wave indicator with one-click stop/resume playback.
 - **Speech-to-Text (STT) Microphone Input**:
   - Native microphone speech recognition button right in the input composer.
   - Real-time speech transcription directly into the message composer using `webkitSpeechRecognition`.
+  - Configured for `en-IN` to naturally recognize Hinglish expressions, Indian names, and English queries.
   - Animated pulsing saffron glow while the microphone is actively listening.
   - Hands-free, accessible interaction across desktop and mobile devices.
 

@@ -35,18 +35,58 @@ export function stripMarkdownForSpeech(text) {
 }
 
 /**
- * Speaks text using the browser's native SpeechSynthesis API
- * @param {string} text - Text to speak
-/**
  * Finds the highest quality female voice available in the current browser/OS
+ * @param {string} [text=''] - Text to be spoken, used to detect script/language
  * @returns {SpeechSynthesisVoice|null}
  */
-export function getPreferredFemaleVoice() {
+export function getPreferredFemaleVoice(text = '') {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return null;
   const voices = window.speechSynthesis.getVoices();
   if (!voices || voices.length === 0) return null;
 
-  // Ranked high-quality female voices across macOS, iOS, Chrome, Edge, and Windows
+  const isDevanagari = /[\u0900-\u097F]/.test(text || '');
+
+  // 1. If text is Devanagari Hindi, target Hindi female voices
+  if (isDevanagari) {
+    const hindiFemalePatterns = [
+      /lekha/i,
+      /swara/i,
+      /kalpana/i,
+      /geeta/i,
+      /veena/i,
+      /google.*(हिन्दी|hindi)/i,
+      /microsoft.*(swara|kalpana)/i,
+    ];
+    for (const regex of hindiFemalePatterns) {
+      const match = voices.find((v) => regex.test(v.name));
+      if (match) return match;
+    }
+
+    // Any Hindi voice not flagged male
+    const anyHindiFemale = voices.find(
+      (v) => v.lang.startsWith('hi') && !/male|david|mark|george/i.test(v.name)
+    );
+    if (anyHindiFemale) return anyHindiFemale;
+
+    const fallbackHindi = voices.find((v) => v.lang.startsWith('hi'));
+    if (fallbackHindi) return fallbackHindi;
+  }
+
+  // 2. For Hinglish (Hindi in Latin script) or Indian English, prioritize Indian female voices
+  // (e.g. Veena, Heera, Neerja, Google en-IN) as they have natural Indian phonetics for Hinglish
+  const indianFemalePatterns = [
+    /veena/i,
+    /heera/i,
+    /neerja/i,
+    /google.*(india|in\b)/i,
+    /microsoft.*(heera|neerja)/i,
+  ];
+  for (const regex of indianFemalePatterns) {
+    const match = voices.find((v) => regex.test(v.name));
+    if (match) return match;
+  }
+
+  // 3. Ranked global high-quality female voices across macOS, iOS, Chrome, Edge, and Windows
   const preferredFemaleNames = [
     /samantha/i,
     /google us english/i,
@@ -56,7 +96,6 @@ export function getPreferredFemaleVoice() {
     /microsoft zira/i,
     /karen/i,
     /victoria/i,
-    /veena/i,
     /fiona/i,
     /tessa/i,
     /moira/i,
@@ -73,8 +112,12 @@ export function getPreferredFemaleVoice() {
   );
   if (taggedFemale) return taggedFemale;
 
-  // Fallback to en-US or default English
-  return voices.find((v) => v.lang.startsWith('en-US') || v.lang.startsWith('en')) || voices[0] || null;
+  // Fallback to en-IN, en-US or default English
+  return (
+    voices.find((v) => v.lang.startsWith('en-IN') || v.lang.startsWith('en-US') || v.lang.startsWith('en')) ||
+    voices[0] ||
+    null
+  );
 }
 
 /**
@@ -102,15 +145,19 @@ export function speakText(text, { onStart, onEnd, onError } = {}) {
     return null;
   }
 
+  const isDevanagari = /[\u0900-\u097F]/.test(cleanText);
   const utterance = new SpeechSynthesisUtterance(cleanText);
   utterance.rate = 1.0;
   utterance.pitch = 1.08; // Warm, natural feminine pitch
-  utterance.lang = 'en-US';
+  utterance.lang = isDevanagari ? 'hi-IN' : 'en-IN';
 
   // Apply preferred female voice
-  const femaleVoice = getPreferredFemaleVoice();
+  const femaleVoice = getPreferredFemaleVoice(cleanText);
   if (femaleVoice) {
     utterance.voice = femaleVoice;
+    if (femaleVoice.lang) {
+      utterance.lang = femaleVoice.lang;
+    }
   }
 
   utterance.onstart = () => onStart?.();
@@ -149,7 +196,7 @@ export function isSpeechRecognitionSupported() {
 /**
  * Initializes browser SpeechRecognition instance
  */
-export function initSpeechRecognizer({ onResult, onEnd, onError, onStart }) {
+export function initSpeechRecognizer({ onResult, onEnd, onError, onStart, lang = 'en-IN' }) {
   if (!isSpeechRecognitionSupported()) return null;
 
   const SpeechRecognitionClass =
@@ -158,7 +205,8 @@ export function initSpeechRecognizer({ onResult, onEnd, onError, onStart }) {
 
   recognition.continuous = false;
   recognition.interimResults = true;
-  recognition.lang = 'en-US';
+  // en-IN accurately recognizes Indian English, Hinglish, and Hindi names
+  recognition.lang = lang || 'en-IN';
 
   recognition.onstart = () => {
     onStart?.();
