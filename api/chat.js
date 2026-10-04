@@ -28,7 +28,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       status: 'ok',
       hasApiKey: hasKey,
-      model: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
+      model: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
     });
   }
 
@@ -75,7 +75,7 @@ export default async function handler(req, res) {
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const rawModel = (process.env.GEMINI_MODEL || 'gemini-1.5-flash').trim().replace(/^["']|["']$/g, '');
+    const rawModel = (process.env.GEMINI_MODEL || 'gemini-3.8-flash').trim().replace(/^["']|["']$/g, '');
     const configuredModel = rawModel.replace(/^models\//, '');
 
     // 3. Format chat history for Gemini multi-turn conversation
@@ -95,9 +95,10 @@ export default async function handler(req, res) {
 
     // Candidate models to ensure resilience across API tiers
     const candidateModels = [
+      configuredModel !== 'gemini-1.5-flash' && configuredModel !== 'gemini-2.0-flash' ? configuredModel : null,
+      'gemini-3.8-flash',
+      'gemini-2.5-flash',
       configuredModel,
-      'gemini-1.5-flash',
-      'gemini-2.0-flash',
     ].filter((m, idx, arr) => m && arr.indexOf(m) === idx);
 
     let replyText = '';
