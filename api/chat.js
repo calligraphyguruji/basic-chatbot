@@ -78,6 +78,7 @@ function extractTextFromResponse(response) {
       extracted = response.text();
     } catch (e) {
       console.warn('response.text() call failed:', e);
+    }
   }
 
   return cleanAssistantOutput(extracted);
