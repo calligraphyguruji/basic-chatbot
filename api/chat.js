@@ -78,10 +78,177 @@ function extractTextFromResponse(response) {
       extracted = response.text();
     } catch (e) {
       console.warn('response.text() call failed:', e);
-    }
   }
 
   return cleanAssistantOutput(extracted);
+}
+
+/**
+ * Detects if a message is a weather query
+ */
+function isWeatherQuery(text) {
+  return /\b(weather|temperature|forecast|rain|climate)\b/i.test(text || '');
+}
+
+/**
+ * Extracts location from a weather message or conversation history
+ */
+function extractWeatherLocation(message, history) {
+  const query = (message || '').trim();
+
+  // Check if previous bot message was asking for city/zip code
+  const isFollowUpToLocationPrompt =
+    Array.isArray(history) &&
+    history.length > 0 &&
+    (() => {
+      const lastBotMessage = [...history].reverse().find((h) => h && h.sender === 'bot');
+      return (
+        lastBotMessage &&
+        /which city or zip\/pin code should i check/i.test(lastBotMessage.text)
+      );
+    })();
+
+  if (isFollowUpToLocationPrompt) {
+    return query.replace(/[?.!]+$/, '').trim();
+  }
+
+  // Prepositional match: "weather in Noida", "temperature for 201310", "weather of Delhi"
+  const prepMatch = query.match(
+    /\b(?:in|at|for|near|of)\s+([a-zA-Z0-9\s,-]+?)(?:\s+today|\s+now|\s+tomorrow|\?|\.|$)/i
+  );
+  if (prepMatch && prepMatch[1]) {
+    const loc = prepMatch[1].trim();
+    if (!/^(today|now|tomorrow|tonight|this week|current)$/i.test(loc)) {
+      return loc;
+    }
+  }
+
+  // ZIP / PIN code match: e.g. 201310, 110001, 90210
+  const pinMatch = query.match(/\b\d{5,6}\b/);
+  if (pinMatch) {
+    return pinMatch[0];
+  }
+
+  // City followed by weather: "Noida weather", "Delhi weather"
+  const cityMatch = query.match(/^([a-zA-Z\s]+?)\s+weather/i);
+  if (cityMatch && cityMatch[1]) {
+    const loc = cityMatch[1].trim();
+    if (!/^(today|current|tell me|what is the|how is the)/i.test(loc)) {
+      return loc;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Fetches verified real-time weather from wttr.in
+ */
+async function fetchLiveWeather(location) {
+  try {
+    const cleanLoc = encodeURIComponent(
+      location.trim().replace(/^(in|at|for|near|of)\s+/i, '')
+    );
+    const res = await fetch(`https://wttr.in/${cleanLoc}?format=j1`, {
+      headers: { 'User-Agent': 'curl/7.88.1' },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const current = data.current_condition?.[0];
+    const nearest = data.nearest_area?.[0];
+    if (!current) return null;
+
+    const areaName = nearest?.areaName?.[0]?.value || location;
+    const region = nearest?.region?.[0]?.value || '';
+    const country = nearest?.country?.[0]?.value || '';
+    const condition = current.weatherDesc?.[0]?.value || 'Clear';
+    const tempC = current.temp_C;
+    const tempF = current.temp_F;
+    const feelsLikeC = current.FeelsLikeC;
+    const humidity = current.humidity;
+    const windSpeedKmph = current.windspeedKmph;
+
+    const locationName = [areaName, region, country].filter(Boolean).join(', ');
+
+    return {
+      queryLocation: location,
+      resolvedLocation: locationName || location,
+      condition,
+      tempC,
+      tempF,
+      feelsLikeC,
+      humidity,
+      windSpeedKmph,
+      source: 'Live Weather Observation',
+    };
+  } catch (err) {
+    console.warn('[Live Weather] Fetch failed:', err?.message || err);
+    return null;
+  }
+}
+
+/**
+ * Detects whether real-time web search is required
+ */
+function isSearchRequired(message) {
+  const text = (message || '').toLowerCase();
+  const searchKeywords = [
+    /\bnews\b/i,
+    /\bscore(s)?\b/i,
+    /\bmatch\b/i,
+    /\bcricket\b/i,
+    /\bfootball\b/i,
+    /\bbitcoin\b/i,
+    /\bcrypto\b/i,
+    /\bstock\b/i,
+    /\bprice(s)?\b/i,
+    /\blatest\b/i,
+    /\bcurrent\b/i,
+    /\btoday('?s)?\b/i,
+    /\btonight\b/i,
+    /\bnow\b/i,
+    /\brecent\b/i,
+    /\bthis week\b/i,
+    /\bwho won\b/i,
+    /\bwho is the (current|present|new)\b/i,
+    /\bflight(s)?\b/i,
+    /\biphone 1[6-9]\b/i,
+  ];
+  return searchKeywords.some((p) => p.test(text));
+}
+
+/**
+ * Performs live web search and extracts top snippets
+ */
+async function fetchLiveWebSearch(query) {
+  try {
+    const q = encodeURIComponent(query.trim());
+    const res = await fetch(`https://html.duckduckgo.com/html/?q=${q}`, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok) return [];
+    const html = await res.text();
+    const results = [];
+    const snippetRegex =
+      /<a class="result__url"[^>]*href="([^"]+)"[^>]*>[\s\S]*?<a class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+    let match;
+    while ((match = snippetRegex.exec(html)) !== null && results.length < 4) {
+      const url = match[1]?.trim();
+      const snippet = match[2]?.replace(/<[^>]+>/g, '').trim();
+      if (snippet && !results.some((r) => r.snippet === snippet)) {
+        results.push({ url, snippet });
+      }
+    }
+    return results;
+  } catch (err) {
+    console.warn('[Live Search] Fetch failed:', err?.message || err);
+    return [];
+  }
 }
 
 /**
@@ -185,7 +352,85 @@ export default async function handler(req, res) {
     const rawModel = (process.env.GEMINI_MODEL || 'gemini-flash-latest').trim().replace(/^["']|["']$/g, '');
     const configuredModel = rawModel.replace(/^models\//, '');
 
-    // 3. Format chat history for Gemini multi-turn conversation
+    // 3. Real-Time Weather Handling (City / ZIP / PIN code contextual lookup)
+    const isWeather =
+      isWeatherQuery(message) ||
+      (Array.isArray(history) &&
+        history.length > 0 &&
+        (() => {
+          const lastBot = [...history].reverse().find((h) => h && h.sender === 'bot');
+          return lastBot && /which city or zip\/pin code should i check/i.test(lastBot.text);
+        })());
+
+    if (isWeather) {
+      const location = extractWeatherLocation(message, history);
+      if (!location) {
+        return res.status(200).json({
+          reply: 'Sure! Which city or ZIP/PIN code should I check the weather for?',
+        });
+      }
+
+      // Fetch verified real-time weather
+      const weatherData = await fetchLiveWeather(location);
+      if (weatherData) {
+        const directReply = `Today's weather in ${weatherData.resolvedLocation} is ${weatherData.condition}, with a temperature of approximately ${weatherData.tempC}°C (${weatherData.tempF}°F), feels like ${weatherData.feelsLikeC}°C, and humidity around ${weatherData.humidity}%.\n\n*Source: Live Weather Observation*`;
+
+        try {
+          const weatherPrompt = `The user asked: "${message}".
+Current verified live weather observation for "${location}":
+Location: ${weatherData.resolvedLocation}
+Condition: ${weatherData.condition}
+Temperature: ${weatherData.tempC}°C (${weatherData.tempF}°F)
+Feels Like: ${weatherData.feelsLikeC}°C
+Humidity: ${weatherData.humidity}%
+Wind Speed: ${weatherData.windSpeedKmph} km/h
+
+Task: Give a natural, friendly, and concise response in this exact format:
+"Today's weather in ${location} is ${weatherData.condition}, with a temperature of approximately ${weatherData.tempC}°C (${weatherData.tempF}°F)."
+Mention humidity and conditions, and append "*Source: Live Weather Observation*". Do NOT say you lack real-time access.`;
+
+          const model = genAI.getGenerativeModel({
+            model: 'gemini-flash-latest',
+            systemInstruction: SYSTEM_INSTRUCTION,
+          });
+          const result = await model.generateContent(weatherPrompt);
+          const response = await result.response;
+          const reply = extractTextFromResponse(response);
+          if (reply && !reply.toLowerCase().includes("don't have access") && !reply.toLowerCase().includes("cannot provide")) {
+            return res.status(200).json({ reply: reply.trim() });
+          }
+        } catch (weatherErr) {
+          console.warn('[Live Weather Gemini format fallback]:', weatherErr?.message || weatherErr);
+        }
+
+        return res.status(200).json({ reply: directReply });
+      } else {
+        return res.status(200).json({
+          reply: `I couldn't retrieve the live weather data for "${location}" right now. Please try again or check the spelling.`,
+        });
+      }
+    }
+
+    // 4. Real-Time Web Search Handling (News, Prices, Sports, Current Events)
+    let searchGroundingPrompt = '';
+    const needsSearch = isSearchRequired(message);
+    if (needsSearch) {
+      const searchSnippets = await fetchLiveWebSearch(message);
+      if (searchSnippets.length > 0) {
+        searchGroundingPrompt =
+          `\n\n[CURRENT REAL-TIME VERIFIED WEB SEARCH DATA]:\n` +
+          searchSnippets
+            .map((s, idx) => `[Source ${idx + 1} (${s.url})]: ${s.snippet}`)
+            .join('\n\n') +
+          `\n\nTask: Use the above verified real-time information to answer the user's question accurately, concisely, and naturally. Do NOT state that you lack real-time access. Cite relevant source URLs or names where appropriate.`;
+      }
+    }
+
+    const effectiveUserMessage = searchGroundingPrompt
+      ? `${message.trim()}\n${searchGroundingPrompt}`
+      : message.trim();
+
+    // 5. Format chat history for Gemini multi-turn conversation
     // Gemini SDK Rules:
     // - History MUST start with role: 'user' (cannot start with initial bot greeting)
     // - Turns must alternate strictly: 'user' -> 'model' -> 'user' -> 'model'
@@ -242,23 +487,40 @@ export default async function handler(req, res) {
     let lastError = null;
     const modelErrors = [];
 
-    // 4. Send the conversation/message to Gemini
+    // 6. Send the conversation/message to Gemini
     for (const modelName of candidateModels) {
       try {
-        const model = genAI.getGenerativeModel({
-          model: modelName,
-          systemInstruction: SYSTEM_INSTRUCTION,
-        });
+        let model;
+        // Attempt with Google Search Grounding tool if search is required
+        if (needsSearch) {
+          try {
+            model = genAI.getGenerativeModel({
+              model: modelName,
+              systemInstruction: SYSTEM_INSTRUCTION,
+              tools: [{ googleSearch: {} }],
+            });
+          } catch {
+            model = genAI.getGenerativeModel({
+              model: modelName,
+              systemInstruction: SYSTEM_INSTRUCTION,
+            });
+          }
+        } else {
+          model = genAI.getGenerativeModel({
+            model: modelName,
+            systemInstruction: SYSTEM_INSTRUCTION,
+          });
+        }
 
         if (formattedHistory.length > 0) {
           const chat = model.startChat({
             history: formattedHistory,
           });
-          const result = await chat.sendMessage(message.trim());
+          const result = await chat.sendMessage(effectiveUserMessage);
           const response = await result.response;
           replyText = extractTextFromResponse(response);
         } else {
-          const result = await model.generateContent(message.trim());
+          const result = await model.generateContent(effectiveUserMessage);
           const response = await result.response;
           replyText = extractTextFromResponse(response);
         }
@@ -301,11 +563,11 @@ export default async function handler(req, res) {
               });
               if (formattedHistory.length > 0) {
                 const chat = model.startChat({ history: formattedHistory });
-                const result = await chat.sendMessage(message.trim());
+                const result = await chat.sendMessage(effectiveUserMessage);
                 const response = await result.response;
                 replyText = extractTextFromResponse(response);
               } else {
-                const result = await model.generateContent(message.trim());
+                const result = await model.generateContent(effectiveUserMessage);
                 const response = await result.response;
                 replyText = extractTextFromResponse(response);
               }

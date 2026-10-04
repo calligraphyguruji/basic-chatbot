@@ -82,6 +82,16 @@ export function getLocalBotResponse(userInput) {
     return 'Hello! How can I help you?';
   }
 
+  // 6. Weather inquiry without location: prompt user for city or ZIP/PIN code
+  const isWeatherQuery = /\b(weather|temperature|forecast)\b/i.test(query);
+  const hasWeatherLocation =
+    /\b(in|at|for|near)\s+([a-zA-Z0-9]+)/i.test(query) ||
+    /\b\d{5,6}\b/.test(query);
+
+  if (isWeatherQuery && !hasWeatherLocation) {
+    return 'Sure! Which city or ZIP/PIN code should I check the weather for?';
+  }
+
   // Unrecognized locally -> delegate to Gemini
   return null;
 }
