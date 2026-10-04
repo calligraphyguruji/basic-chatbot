@@ -1,8 +1,7 @@
-import ReactMarkdown from 'react-markdown';
-import remarkMath from 'remark-math';
-import remarkGfm from 'remark-gfm';
-import rehypeKatex from 'rehype-katex';
+import { lazy, Suspense } from 'react';
 import { BotAvatar, UserAvatar } from './Avatars';
+
+const MarkdownContent = lazy(() => import('./MarkdownContent'));
 
 /**
  * ChatMessage Component
@@ -32,12 +31,9 @@ function ChatMessage({ message, isSpeaking = false, onToggleSpeak }) {
       <BotAvatar />
       <div className="bot-bubble-wrapper">
         <div className="message-bubble bot-bubble markdown-content">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm, remarkMath]}
-            rehypePlugins={[rehypeKatex]}
-          >
-            {message.text}
-          </ReactMarkdown>
+          <Suspense fallback={<span>{message.text}</span>}>
+            <MarkdownContent>{message.text}</MarkdownContent>
+          </Suspense>
         </div>
         {onToggleSpeak && (
           <button

@@ -17,7 +17,7 @@ function assert(condition, testName) {
 }
 
 async function runTests() {
-  console.log('Running 16-point Acceptance Evaluation...\n');
+  console.log('Running 18-point Acceptance Evaluation...\n');
 
   // TEST 1: 'What is atomic structure?'
   const t1 = classifyIntent('What is atomic structure?');
@@ -132,6 +132,55 @@ async function runTests() {
       streamChunks.length > 0 &&
       streamEnded,
     'TEST 17: Streaming mode yields chunked text/plain response'
+  );
+
+  // TEST 18: CORS allows configured origins and rejects unknown browser origins
+  const prevClientOrigin = process.env.CLIENT_ORIGIN;
+  process.env.CLIENT_ORIGIN = 'https://basic-chatbot-kappa.vercel.app';
+
+  let allowedCorsStatus = 0;
+  let allowedCorsHeaders = {};
+  await handler(
+    {
+      method: 'OPTIONS',
+      headers: { origin: 'https://basic-chatbot-kappa.vercel.app' },
+    },
+    {
+      setHeader: (key, value) => {
+        allowedCorsHeaders[key] = value;
+      },
+      status: (s) => {
+        allowedCorsStatus = s;
+        return { end: () => {} };
+      },
+    }
+  );
+
+  let blockedCorsStatus = 0;
+  await handler(
+    {
+      method: 'OPTIONS',
+      headers: { origin: 'https://evil.example' },
+    },
+    {
+      setHeader: () => {},
+      status: (s) => {
+        blockedCorsStatus = s;
+        return { end: () => {} };
+      },
+    }
+  );
+
+  if (prevClientOrigin === undefined) {
+    delete process.env.CLIENT_ORIGIN;
+  } else {
+    process.env.CLIENT_ORIGIN = prevClientOrigin;
+  }
+  assert(
+    allowedCorsStatus === 200 &&
+      allowedCorsHeaders['Access-Control-Allow-Origin'] === 'https://basic-chatbot-kappa.vercel.app' &&
+      blockedCorsStatus === 403,
+    'TEST 18: CORS only permits configured browser origins'
   );
 
   console.log(`\n========================================`);

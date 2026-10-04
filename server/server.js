@@ -10,18 +10,46 @@ const app = express();
 const PORT = process.env.PORT || 5001;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 const JSON_BODY_LIMIT = process.env.JSON_BODY_LIMIT || '128kb';
+const DEFAULT_CLIENT_ORIGIN = 'https://basic-chatbot-kappa.vercel.app';
 
-// Robust CORS: Allow local tools when unset, otherwise enforce CLIENT_ORIGIN.
-const rawOrigin = process.env.CLIENT_ORIGIN;
-const cleanClientOrigin = rawOrigin ? rawOrigin.trim().replace(/\/+$/, '') : null;
+function normalizeOrigin(origin) {
+  return origin ? origin.trim().replace(/\/+$/, '') : '';
+}
+
+function getConfiguredOrigins() {
+  const origins = new Set();
+  const addOrigin = (origin) => {
+    const normalized = normalizeOrigin(origin);
+    if (normalized && normalized !== '*') origins.add(normalized);
+  };
+
+  (process.env.CLIENT_ORIGIN || '').split(',').forEach(addOrigin);
+  addOrigin(DEFAULT_CLIENT_ORIGIN);
+  addOrigin(process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '');
+  addOrigin(
+    process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : ''
+  );
+
+  return origins;
+}
+
+const allowedOrigins = getConfiguredOrigins();
 
 app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
 
-      const normalized = origin.trim().replace(/\/+$/, '');
-      if (!cleanClientOrigin || cleanClientOrigin === '*' || normalized === cleanClientOrigin) {
+      const normalized = normalizeOrigin(origin);
+      if (allowedOrigins.has(normalized)) {
+        return callback(null, true);
+      }
+
+      if (
+        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(normalized)
+      ) {
         return callback(null, true);
       }
 

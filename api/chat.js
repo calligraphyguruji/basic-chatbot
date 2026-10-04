@@ -6,36 +6,65 @@ import { searchWeb } from './search.js';
 const MAX_MESSAGE_LENGTH = Number(process.env.MAX_MESSAGE_LENGTH || 4000);
 const MAX_HISTORY_TURNS = Number(process.env.MAX_HISTORY_TURNS || 12);
 const MAX_HISTORY_ITEM_LENGTH = Number(process.env.MAX_HISTORY_ITEM_LENGTH || 2000);
+const DEFAULT_CLIENT_ORIGIN = 'https://basic-chatbot-kappa.vercel.app';
 
 function normalizeOrigin(origin) {
   return origin ? origin.trim().replace(/\/+$/, '') : '';
 }
 
-function getAllowedOrigin(requestOrigin) {
-  const configuredOrigin = normalizeOrigin(process.env.CLIENT_ORIGIN || '');
-  const normalizedRequestOrigin = normalizeOrigin(requestOrigin || '');
+function getConfiguredOrigins() {
+  const origins = new Set();
+  const addOrigin = (origin) => {
+    const normalized = normalizeOrigin(origin);
+    if (normalized && normalized !== '*') origins.add(normalized);
+  };
 
-  if (!configuredOrigin || configuredOrigin === '*') {
-    return '*';
+  (process.env.CLIENT_ORIGIN || '')
+    .split(',')
+    .forEach(addOrigin);
+
+  addOrigin(DEFAULT_CLIENT_ORIGIN);
+  addOrigin(process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '');
+  addOrigin(
+    process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : ''
+  );
+
+  return origins;
+}
+
+function getAllowedOrigin(requestOrigin) {
+  const normalizedRequestOrigin = normalizeOrigin(requestOrigin || '');
+  if (!normalizedRequestOrigin) return '';
+
+  const configuredOrigins = getConfiguredOrigins();
+  if (configuredOrigins.has(normalizedRequestOrigin)) {
+    return normalizedRequestOrigin;
   }
 
-  return normalizedRequestOrigin === configuredOrigin ? normalizedRequestOrigin : '';
+  if (
+    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(normalizedRequestOrigin)
+  ) {
+    return normalizedRequestOrigin;
+  }
+
+  return '';
 }
 
 function writeCorsHeaders(req, res) {
-  const allowedOrigin = getAllowedOrigin(req.headers?.origin);
+  const requestOrigin = req.headers?.origin;
+  const allowedOrigin = getAllowedOrigin(requestOrigin);
   if (allowedOrigin) {
     res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
-    if (allowedOrigin !== '*') {
-      res.setHeader('Vary', 'Origin');
-    }
+    res.setHeader('Vary', 'Origin');
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
   res.setHeader(
     'Access-Control-Allow-Headers',
     'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
   );
-  return Boolean(allowedOrigin);
+  return !requestOrigin || Boolean(allowedOrigin);
 }
 
 function sanitizeHistory(history) {
