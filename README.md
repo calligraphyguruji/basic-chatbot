@@ -32,19 +32,17 @@ Created and owned by **Mr. Aman Mishra**.
 - **Prompt Injection Defense**: Guardrails reject unauthorized system prompt extractions, internal instructions reveals, or hidden reasoning queries.
 - **Chain-of-Thought Sanitization**: Dedicated filter strips internal scratchpad tokens (`* Draft 1:`, `* Context:`, `<thought>`, `Self-Correction:`) so only polished, final responses reach the user interface.
 
-### 3. UI/UX Design System
-- **Saffron Visual Identity**:
-  - Primary accent: `#FF9933` (Saffron) for avatars, buttons, and focused borders.
-  - Interactive states: `#E68A00` hover, active scaling, and soft shadows.
-  - WCAG AAA contrast ratio compliance for text and button elements.
-- **Fixed Bottom Composer**:
-  - Sticky composer pinned to the viewport bottom with subtle border-top and ambient drop-shadow.
-  - Keyboard submission with `Enter` (and `Shift + Enter` multiline prevention).
-  - Disabled input states during asynchronous inference to prevent duplicate requests.
-- **Polished Visual Feedback**:
-  - Smooth auto-scrolling with `messagesEndRef` and `scrollIntoView({ behavior: 'smooth' })`.
-  - Three-dot animated pulsing typing indicator while the assistant formulates an answer.
-  - Fluid mobile-responsive layout for smartphones, tablets, and wide monitors.
+### 4. Voice Speaking & Audio Input System
+- **Text-to-Speech (TTS) Voice Playback**:
+  - Interactive audio speaker buttons next to every bot message bubble.
+  - Powered by native browser `window.speechSynthesis` with zero external latency or API costs.
+  - Automatically strips markdown formatting (`*`, `**`, code blocks, URLs) for natural audio pronunciation.
+  - Real-time active visual wave indicator with one-click stop/resume playback.
+- **Speech-to-Text (STT) Microphone Input**:
+  - Native microphone speech recognition button right in the input composer.
+  - Real-time speech transcription directly into the message composer using `webkitSpeechRecognition`.
+  - Animated pulsing saffron glow while the microphone is actively listening.
+  - Hands-free, accessible interaction across desktop and mobile devices.
 
 ---
 

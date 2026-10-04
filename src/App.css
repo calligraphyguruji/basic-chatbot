@@ -185,6 +185,110 @@
   cursor: not-allowed;
 }
 
+/* Bot Bubble Wrapper with Speaker Control */
+.bot-bubble-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 85%;
+}
+
+.bot-bubble-wrapper .bot-bubble {
+  max-width: 100%;
+}
+
+/* Speaker Audio Button */
+.speaker-button {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border-radius: 50%;
+  border: 1px solid #e5e7eb;
+  background-color: #f8f9fa;
+  color: #6c757d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.speaker-button:hover {
+  background-color: var(--primary-saffron);
+  color: #ffffff;
+  border-color: var(--primary-saffron);
+  transform: scale(1.08);
+}
+
+.speaker-button.speaking {
+  background-color: var(--primary-saffron);
+  color: #ffffff;
+  border-color: var(--primary-saffron);
+  box-shadow: 0 0 0 3px rgba(255, 153, 51, 0.35);
+  animation: speakingPulse 1.2s infinite ease-in-out;
+}
+
+@keyframes speakingPulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 2px rgba(255, 153, 51, 0.3);
+  }
+  50% {
+    transform: scale(1.1);
+    box-shadow: 0 0 0 5px rgba(255, 153, 51, 0.15);
+  }
+}
+
+/* Microphone Voice Input Button */
+.mic-button {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: 8px;
+  border: 1px solid var(--input-border);
+  background-color: #ffffff;
+  color: #555555;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.mic-button:hover:not(:disabled) {
+  border-color: var(--primary-saffron);
+  color: var(--primary-saffron);
+  background-color: #fffaf5;
+}
+
+.mic-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mic-button.listening {
+  background-color: var(--primary-saffron);
+  border-color: var(--primary-saffron);
+  color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(255, 153, 51, 0.4);
+  animation: micPulse 1.3s infinite ease-in-out;
+}
+
+@keyframes micPulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 2px rgba(255, 153, 51, 0.4);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 6px rgba(255, 153, 51, 0.15);
+  }
+}
+
 /* 3. Responsive Styling for Mobile */
 @media (max-width: 640px) {
   .messages-scroll-area {
@@ -202,6 +306,12 @@
   .chat-input {
     padding: 10px 14px;
     font-size: 15px;
+  }
+
+  .mic-button {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
   }
 
   .send-button {

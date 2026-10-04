@@ -3,6 +3,7 @@ import ChatInput from './ChatInput';
 import ChatMessage from './ChatMessage';
 import TypingIndicator from './TypingIndicator';
 import { getLocalBotResponse } from '../utils/chatbotLogic';
+import { speakText, stopSpeech } from '../utils/speechUtils';
 
 /**
  * Chatbot Component
@@ -11,6 +12,7 @@ import { getLocalBotResponse } from '../utils/chatbotLogic';
  * - Conversation message state
  * - Typing indicator during local & Gemini API thinking
  * - Automatic smooth scrolling to the latest message
+ * - Text-to-speech playback and stop controls
  * - Seamless fallback from local answers to backend Google Gemini API
  */
 function Chatbot() {
@@ -26,6 +28,9 @@ function Chatbot() {
   // isTyping disables the input and displays the animated dots
   const [isTyping, setIsTyping] = useState(false);
 
+  // Tracks which bot message is actively playing speech
+  const [speakingMessageId, setSpeakingMessageId] = useState(null);
+
   // Ref attached to the bottom anchor element inside the scrollable message area
   const messagesEndRef = useRef(null);
 
@@ -34,14 +39,42 @@ function Chatbot() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
+  // Clean up any ongoing speech synthesis on unmount
+  useEffect(() => {
+    return () => {
+      stopSpeech();
+    };
+  }, []);
+
+  /**
+   * Toggles speech playback for a specific bot message
+   */
+  const handleToggleSpeak = (id, text) => {
+    if (speakingMessageId === id) {
+      stopSpeech();
+      setSpeakingMessageId(null);
+    } else {
+      speakText(text, {
+        onStart: () => setSpeakingMessageId(id),
+        onEnd: () => setSpeakingMessageId(null),
+        onError: () => setSpeakingMessageId(null),
+      });
+    }
+  };
+
   /**
    * Handles user sending a message.
    * 1. Appends the user's message immediately.
-   * 2. Shows the typing indicator.
-   * 3. Checks for a local response (greetings, date, time, etc.).
-   * 4. If unrecognized, delegates to the secure Gemini backend endpoint (/api/chat).
+   * 2. Stops any playing speech.
+   * 3. Shows the typing indicator.
+   * 4. Checks for a local response (greetings, date, time, etc.).
+   * 5. If unrecognized, delegates to the secure Gemini backend endpoint (/api/chat).
    */
   const handleSendMessage = async (userText) => {
+    // Stop ongoing speech when a new message is submitted
+    stopSpeech();
+    setSpeakingMessageId(null);
+
     const userMessage = {
       id: Date.now(),
       sender: 'user',
@@ -137,7 +170,12 @@ function Chatbot() {
       <div className="messages-scroll-area">
         <div className="messages-list">
           {messages.map((message) => (
-            <ChatMessage key={message.id} message={message} />
+            <ChatMessage
+              key={message.id}
+              message={message}
+              isSpeaking={speakingMessageId === message.id}
+              onToggleSpeak={handleToggleSpeak}
+            />
           ))}
 
           {/* Typing indicator bubble */}
