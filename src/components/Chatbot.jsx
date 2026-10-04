@@ -69,13 +69,9 @@ function Chatbot() {
       // Delegate complex question to backend Gemini API with bounded timeout
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 25000);
-      const rawBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
-      // Strip trailing slashes and accidental /api suffix
-      const apiBaseUrl = rawBaseUrl.trim().replace(/\/+$/, '').replace(/\/api$/, '');
-      const endpoint = apiBaseUrl ? `${apiBaseUrl}/api/chat` : '/api/chat';
 
       try {
-        const response = await fetch(endpoint, {
+        const response = await fetch('/api/chat', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -87,10 +83,28 @@ function Chatbot() {
           signal: controller.signal,
         });
 
-        const data = await response.json();
-        const botReply =
-          data?.reply ||
-          "Sorry, I couldn't get a response right now. Please try again.";
+        const data = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          console.error('Gemini API response:', data);
+          const serverErrorMessage =
+            data?.reply ||
+            data?.details ||
+            data?.error ||
+            "Sorry, I couldn't get a response right now. Please try again.";
+
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: Date.now() + 1,
+              sender: 'bot',
+              text: serverErrorMessage,
+            },
+          ]);
+          return;
+        }
+
+        const botReply = data?.reply || "I didn't receive a response.";
 
         setMessages((prev) => [
           ...prev,
@@ -101,13 +115,13 @@ function Chatbot() {
           },
         ]);
       } catch (err) {
-        console.error('Error fetching chat response:', err);
+        console.error('Chat API error:', err);
         setMessages((prev) => [
           ...prev,
           {
             id: Date.now() + 1,
             sender: 'bot',
-            text: "Sorry, I couldn't get a response right now. Please try again.",
+            text: "Sorry, I couldn't connect to the chat server. Please check your network or try again.",
           },
         ]);
       } finally {

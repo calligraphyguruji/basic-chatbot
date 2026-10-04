@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import chatHandler from '../api/chat.js';
 
 dotenv.config();
+dotenv.config({ path: '.env.local', override: true });
 
 const app = express();
 const PORT = process.env.PORT || 5001;
