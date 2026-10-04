@@ -69,7 +69,9 @@ function Chatbot() {
       // Delegate complex question to backend Gemini API with bounded timeout
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 25000);
-      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+      const rawBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+      // Strip trailing slashes and accidental /api suffix
+      const apiBaseUrl = rawBaseUrl.trim().replace(/\/+$/, '').replace(/\/api$/, '');
 
       try {
         const response = await fetch(`${apiBaseUrl}/api/chat`, {
