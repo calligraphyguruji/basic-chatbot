@@ -58,6 +58,9 @@ Created and owned by **Mr. Aman Mishra**.
   - Animated pulsing saffron glow while the microphone is actively listening.
   - Hands-free, accessible interaction across desktop and mobile devices.
 
+### 6. Production Analytics & Observability
+- Integrated `@vercel/analytics/react` to monitor real-time visitor traffic, device distribution, and core web vitals without collecting personal identifiable information.
+
 ---
 
 ## 🏗️ Architecture & Request Lifecycle
