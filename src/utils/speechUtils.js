@@ -55,6 +55,10 @@ if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
   };
 }
 
+// Explicit male voice blacklist to prevent accidental male voice fallbacks
+const MALE_VOICE_REGEX =
+  /\b(aman|rishi|alex|fred|daniel|david|george|mark|oliver|ralph|tom|junior|jester|albert|bruce|reed|rocko|grandpa)\b/i;
+
 /**
  * Finds the highest quality female voice available in the current browser/OS
  * @param {string} [text=''] - Text to be spoken, used to detect script/language
@@ -71,6 +75,7 @@ export function getPreferredFemaleVoice(text = '') {
   if (isDevanagari) {
     const hindiFemalePatterns = [
       /lekha/i, // macOS built-in Hindi female
+      /tara/i, // macOS Indian female
       /swara/i, // Windows Hindi female
       /kalpana/i, // Windows Hindi female
       /geeta/i,
@@ -85,7 +90,7 @@ export function getPreferredFemaleVoice(text = '') {
 
     // Any Hindi voice not flagged male
     const anyHindiFemale = voices.find(
-      (v) => v.lang.startsWith('hi') && !/male|david|mark|george|alex/i.test(v.name)
+      (v) => v.lang.startsWith('hi') && !MALE_VOICE_REGEX.test(v.name)
     );
     if (anyHindiFemale) return anyHindiFemale;
 
@@ -94,25 +99,30 @@ export function getPreferredFemaleVoice(text = '') {
   }
 
   // 2. For Hinglish or Indian English, prioritize Indian female voices
-  // (macOS Veena, Windows Heera/Neerja, Google en-IN)
+  // (macOS Tara/Veena, Windows Heera/Neerja, Google en-IN)
   const indianFemalePatterns = [
-    /veena/i, // macOS primary Indian English female
+    /tara/i, // macOS primary Indian English female
+    /veena/i, // macOS Indian English female
     /heera/i,
     /neerja/i,
     /google.*(india|in\b)/i,
     /microsoft.*(heera|neerja)/i,
   ];
   for (const regex of indianFemalePatterns) {
-    const match = voices.find((v) => regex.test(v.name));
+    const match = voices.find((v) => regex.test(v.name) && !MALE_VOICE_REGEX.test(v.name));
     if (match) return match;
   }
 
   // 3. Ranked macOS, iOS, Windows, and Chrome global female voices
-  // (macOS: Samantha and Victoria are pre-installed female voices)
+  // (macOS: Samantha, Tara, Victoria, Karen, Shelley, Sandy, Kathy)
   const preferredFemaleNames = [
+    /tara/i, // macOS Indian English female
     /samantha/i, // Primary macOS/iOS female voice
     /victoria/i, // macOS US female voice
     /karen/i, // macOS Australian female voice
+    /shelley/i, // macOS US/UK female voice
+    /sandy/i, // macOS US female voice
+    /kathy/i, // macOS US female voice
     /tessa/i, // macOS South African female voice
     /moira/i, // macOS Irish female voice
     /fiona/i, // macOS Scottish female voice
@@ -124,28 +134,32 @@ export function getPreferredFemaleVoice(text = '') {
   ];
 
   for (const regex of preferredFemaleNames) {
-    const match = voices.find((v) => regex.test(v.name));
+    const match = voices.find((v) => regex.test(v.name) && !MALE_VOICE_REGEX.test(v.name));
     if (match) return match;
   }
 
   // Siri female voices on macOS
   const siriFemale = voices.find(
-    (v) => /siri/i.test(v.name) && !/male|voice 1|voice 3/i.test(v.name)
+    (v) => /siri/i.test(v.name) && !/male|voice 1|voice 3/i.test(v.name) && !MALE_VOICE_REGEX.test(v.name)
   );
   if (siriFemale) return siriFemale;
 
   // Any voice explicitly tagged "female"
   const taggedFemale = voices.find(
-    (v) => (v.lang.startsWith('en') || v.lang.startsWith('hi')) && /female/i.test(v.name)
+    (v) =>
+      (v.lang.startsWith('en') || v.lang.startsWith('hi')) &&
+      /female/i.test(v.name) &&
+      !MALE_VOICE_REGEX.test(v.name)
   );
   if (taggedFemale) return taggedFemale;
 
-  // Fallback to en-IN, en-US or default English
-  return (
-    voices.find((v) => v.lang.startsWith('en-IN') || v.lang.startsWith('en-US') || v.lang.startsWith('en')) ||
-    voices[0] ||
-    null
+  // Safe fallback: First non-male English or Indian voice
+  const safeNonMale = voices.find(
+    (v) => (v.lang.startsWith('en') || v.lang.startsWith('hi')) && !MALE_VOICE_REGEX.test(v.name)
   );
+  if (safeNonMale) return safeNonMale;
+
+  return voices[0] || null;
 }
 
 /**
