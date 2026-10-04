@@ -1,3 +1,7 @@
+import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import remarkGfm from 'remark-gfm';
+import rehypeKatex from 'rehype-katex';
 import { BotAvatar, UserAvatar } from './Avatars';
 
 /**
@@ -15,7 +19,7 @@ function ChatMessage({ message, isSpeaking = false, onToggleSpeak }) {
   if (isUser) {
     return (
       <div className="chat-message-row user-row">
-        <div className="message-bubble user-bubble">
+        <div className="message-bubble user-bubble" style={{ whiteSpace: 'pre-wrap' }}>
           {message.text}
         </div>
         <UserAvatar />
@@ -27,8 +31,13 @@ function ChatMessage({ message, isSpeaking = false, onToggleSpeak }) {
     <div className="chat-message-row bot-row">
       <BotAvatar />
       <div className="bot-bubble-wrapper">
-        <div className="message-bubble bot-bubble">
-          {message.text}
+        <div className="message-bubble bot-bubble markdown-content">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm, remarkMath]}
+            rehypePlugins={[rehypeKatex]}
+          >
+            {message.text}
+          </ReactMarkdown>
         </div>
         {onToggleSpeak && (
           <button

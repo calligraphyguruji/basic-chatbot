@@ -77,6 +77,24 @@ function ChatInput({ onSendMessage, disabled = false }) {
     }
   };
 
+  const textareaRef = useRef(null);
+
+  // Auto-resize textarea height as content expands
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      const scrollHeight = textareaRef.current.scrollHeight;
+      textareaRef.current.style.height = `${Math.min(Math.max(scrollHeight, 46), 140)}px`;
+    }
+  }, [inputText]);
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e);
+    }
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
 
@@ -96,16 +114,22 @@ function ChatInput({ onSendMessage, disabled = false }) {
 
     onSendMessage(trimmed);
     setInputText('');
+
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
   };
 
   return (
     <form className="chat-input-form" onSubmit={handleSubmit}>
-      <input
-        type="text"
+      <textarea
+        ref={textareaRef}
+        rows={1}
         className="chat-input"
-        placeholder={isListening ? 'Listening... Speak into your mic' : 'Send a message to Chatbot'}
+        placeholder={isListening ? 'Listening... Speak into your mic' : 'Send a message (Shift+Enter for newline)...'}
         value={inputText}
         onChange={(e) => setInputText(e.target.value)}
+        onKeyDown={handleKeyDown}
         disabled={disabled}
         aria-label="Send a message to Chatbot"
       />

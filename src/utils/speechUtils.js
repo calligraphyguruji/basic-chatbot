@@ -13,6 +13,12 @@ export function stripMarkdownForSpeech(text) {
   return text
     // Remove code blocks
     .replace(/```[\s\S]*?```/g, '')
+    // Remove block math: $$...$$
+    .replace(/\$\$[\s\S]*?\$\$/g, '')
+    // Remove inline math: $...$
+    .replace(/\$([^$]+)\$/g, '$1')
+    // Remove LaTeX backslash commands: \frac, \nu, \lambda, \Delta
+    .replace(/\\[a-zA-Z]+/g, ' ')
     // Remove inline code
     .replace(/`([^`]+)`/g, '$1')
     // Remove markdown links: [label](url) -> label

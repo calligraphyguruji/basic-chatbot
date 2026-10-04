@@ -34,15 +34,21 @@ function Chatbot() {
   // Ref attached to the bottom anchor element inside the scrollable message area
   const messagesEndRef = useRef(null);
 
+  // Ref tracking pending local response timeout
+  const localTimerRef = useRef(null);
+
   // Auto-scroll whenever messages change or typing indicator is toggled
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
-  // Clean up any ongoing speech synthesis on unmount
+  // Clean up any ongoing speech synthesis and timers on unmount
   useEffect(() => {
     return () => {
       stopSpeech();
+      if (localTimerRef.current) {
+        clearTimeout(localTimerRef.current);
+      }
     };
   }, []);
 
@@ -89,7 +95,7 @@ function Chatbot() {
 
     if (localResponse !== null) {
       // Local predefined response (simulate brief 800ms bot reply time)
-      setTimeout(() => {
+      localTimerRef.current = setTimeout(() => {
         const botMessage = {
           id: Date.now() + 1,
           sender: 'bot',
@@ -99,9 +105,9 @@ function Chatbot() {
         setIsTyping(false);
       }, 800);
     } else {
-      // Delegate complex question to backend Gemini API with bounded timeout
+      // Delegate complex question to backend Gemini API with 60s timeout for large generation
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 25000);
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
 
       try {
         const response = await fetch('/api/chat', {
@@ -124,7 +130,7 @@ function Chatbot() {
             data?.reply ||
             data?.details ||
             data?.error ||
-            "Sorry, I couldn't get a response right now. Please try again.";
+            "Unable to retrieve a response right now. Please try again.";
 
           setMessages((prev) => [
             ...prev,
@@ -149,12 +155,17 @@ function Chatbot() {
         ]);
       } catch (err) {
         console.error('Chat API error:', err);
+        const fallbackText =
+          err?.name === 'AbortError'
+            ? 'The response took longer than 60 seconds to generate. Please try asking a slightly more specific question or try again.'
+            : "Unable to connect to the chat server. Please verify your network connection or server status.";
+
         setMessages((prev) => [
           ...prev,
           {
             id: Date.now() + 1,
             sender: 'bot',
-            text: "Sorry, I couldn't connect to the chat server. Please check your network or try again.",
+            text: fallbackText,
           },
         ]);
       } finally {

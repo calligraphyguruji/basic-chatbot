@@ -77,6 +77,108 @@
   word-break: break-word;
 }
 
+/* Markdown & LaTeX Render Styling */
+.markdown-content {
+  overflow-x: auto;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4 {
+  color: #111827;
+  margin-top: 14px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.markdown-content h1:first-child,
+.markdown-content h2:first-child,
+.markdown-content h3:first-child {
+  margin-top: 0;
+}
+
+.markdown-content h1 { font-size: 1.25rem; }
+.markdown-content h2 { font-size: 1.12rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; }
+.markdown-content h3 { font-size: 1.02rem; }
+
+.markdown-content p {
+  margin-bottom: 10px;
+}
+
+.markdown-content p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  margin: 8px 0 12px 20px;
+  padding: 0;
+}
+
+.markdown-content li {
+  margin-bottom: 4px;
+}
+
+.markdown-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 12px 0;
+  font-size: 14px;
+  display: block;
+  overflow-x: auto;
+}
+
+.markdown-content th,
+.markdown-content td {
+  border: 1px solid #d1d5db;
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.markdown-content th {
+  background-color: #f3f4f6;
+  font-weight: 600;
+}
+
+.markdown-content pre {
+  background-color: #1e1e1e;
+  color: #e5e7eb;
+  padding: 12px 14px;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 13.5px;
+  margin: 10px 0;
+}
+
+.markdown-content code {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+}
+
+.markdown-content p code,
+.markdown-content li code {
+  background-color: rgba(0, 0, 0, 0.06);
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.markdown-content blockquote {
+  border-left: 3px solid var(--primary-saffron);
+  margin: 10px 0;
+  padding-left: 12px;
+  color: #4b5563;
+  font-style: italic;
+}
+
+.markdown-content .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 6px 0;
+  margin: 8px 0;
+}
+
 /* Typing Indicator Animation */
 .typing-bubble {
   display: inline-flex;
@@ -130,7 +232,7 @@
 
 .chat-input-form {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 12px;
   width: 100%;
   margin: 0;
@@ -140,12 +242,17 @@
   flex: 1;
   padding: 12px 18px;
   font-size: 16px;
+  line-height: 1.5;
   font-family: inherit;
   color: #1a1a1a;
   background-color: #ffffff;
   border: 1px solid var(--input-border);
   border-radius: 8px;
   outline: none;
+  resize: none;
+  min-height: 48px;
+  max-height: 140px;
+  overflow-y: auto;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
