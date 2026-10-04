@@ -37,6 +37,49 @@ export function stripMarkdownForSpeech(text) {
 /**
  * Speaks text using the browser's native SpeechSynthesis API
  * @param {string} text - Text to speak
+/**
+ * Finds the highest quality female voice available in the current browser/OS
+ * @returns {SpeechSynthesisVoice|null}
+ */
+export function getPreferredFemaleVoice() {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return null;
+  const voices = window.speechSynthesis.getVoices();
+  if (!voices || voices.length === 0) return null;
+
+  // Ranked high-quality female voices across macOS, iOS, Chrome, Edge, and Windows
+  const preferredFemaleNames = [
+    /samantha/i,
+    /google us english/i,
+    /google uk english female/i,
+    /microsoft aria/i,
+    /microsoft jenny/i,
+    /microsoft zira/i,
+    /karen/i,
+    /victoria/i,
+    /veena/i,
+    /fiona/i,
+    /tessa/i,
+    /moira/i,
+  ];
+
+  for (const regex of preferredFemaleNames) {
+    const match = voices.find((v) => regex.test(v.name));
+    if (match) return match;
+  }
+
+  // Any English voice with "female" in its name
+  const taggedFemale = voices.find(
+    (v) => (v.lang.startsWith('en') || v.lang.startsWith('hi')) && /female/i.test(v.name)
+  );
+  if (taggedFemale) return taggedFemale;
+
+  // Fallback to en-US or default English
+  return voices.find((v) => v.lang.startsWith('en-US') || v.lang.startsWith('en')) || voices[0] || null;
+}
+
+/**
+ * Speaks text using the browser's native SpeechSynthesis API
+ * @param {string} text - Text to speak
  * @param {Object} callbacks
  * @param {Function} [callbacks.onStart] - Triggered when speech begins
  * @param {Function} [callbacks.onEnd] - Triggered when speech finishes
@@ -61,17 +104,13 @@ export function speakText(text, { onStart, onEnd, onError } = {}) {
 
   const utterance = new SpeechSynthesisUtterance(cleanText);
   utterance.rate = 1.0;
-  utterance.pitch = 1.0;
+  utterance.pitch = 1.08; // Warm, natural feminine pitch
   utterance.lang = 'en-US';
 
-  // Prefer a natural English voice if available
-  const voices = window.speechSynthesis.getVoices();
-  const naturalVoice = voices.find(
-    (v) =>
-      (v.lang.startsWith('en') && (v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('Samantha') || v.name.includes('Siri')))
-  );
-  if (naturalVoice) {
-    utterance.voice = naturalVoice;
+  // Apply preferred female voice
+  const femaleVoice = getPreferredFemaleVoice();
+  if (femaleVoice) {
+    utterance.voice = femaleVoice;
   }
 
   utterance.onstart = () => onStart?.();
