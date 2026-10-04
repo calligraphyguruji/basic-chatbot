@@ -1,7 +1,6 @@
-
 /**
  * UserAvatar Component
- * Circular emerald green badge with white person silhouette.
+ * Circular saffron badge with white person silhouette.
  */
 export function UserAvatar() {
   return (
@@ -14,7 +13,13 @@ export function UserAvatar() {
         xmlns="http://www.w3.org/2000/svg"
       >
         <circle cx="12" cy="7" r="4.5" />
-        <path d="M4 20c0-4.418 3.582-8 8-8s8 3.582 8 8" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" fill="none" />
+        <path
+          d="M4 20c0-4.418 3.582-8 8-8s8 3.582 8 8"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          fill="none"
+        />
       </svg>
     </div>
   );
@@ -22,7 +27,7 @@ export function UserAvatar() {
 
 /**
  * BotAvatar Component
- * Circular emerald green badge with white friendly robot head.
+ * Circular saffron badge with white friendly robot head.
  */
 export function BotAvatar() {
   return (
@@ -42,11 +47,11 @@ export function BotAvatar() {
         {/* Side Ears */}
         <rect x="3" y="15" width="2" height="6" rx="1" fill="#ffffff" />
         <rect x="27" y="15" width="2" height="6" rx="1" fill="#ffffff" />
-        {/* Eyes (green cutout) */}
-        <circle cx="11.5" cy="16" r="2.2" fill="#1b8755" />
-        <circle cx="20.5" cy="16" r="2.2" fill="#1b8755" />
-        {/* Mouth (green smile line) */}
-        <path d="M12 21.5c1.2 1.2 2.8 1.5 4 1.5s2.8-.3 4-1.5" stroke="#1b8755" strokeWidth="2" strokeLinecap="round" />
+        {/* Eyes (saffron cutout matching badge background) */}
+        <circle cx="11.5" cy="16" r="2.2" fill="#FF9933" />
+        <circle cx="20.5" cy="16" r="2.2" fill="#FF9933" />
+        {/* Mouth (saffron smile line) */}
+        <path d="M12 21.5c1.2 1.2 2.8 1.5 4 1.5s2.8-.3 4-1.5" stroke="#FF9933" strokeWidth="2" strokeLinecap="round" />
       </svg>
     </div>
   );

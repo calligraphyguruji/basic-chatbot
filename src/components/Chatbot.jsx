@@ -2,20 +2,19 @@ import { useState, useEffect, useRef } from 'react';
 import ChatInput from './ChatInput';
 import ChatMessage from './ChatMessage';
 import TypingIndicator from './TypingIndicator';
-import { getBotResponse } from '../utils/chatbotLogic';
+import { getLocalBotResponse } from '../utils/chatbotLogic';
 
 /**
  * Chatbot Component
  *
- * Why useState is needed here:
- * 1. Plain JavaScript variables (like `let messages = []`) do not cause React
- *    to re-render the screen when they change.
- * 2. `useState` allows our component to store conversation history and typing status
- *    in React's internal memory. When we call `setMessages(...)` or `setIsTyping(...)`,
- *    React automatically updates the DOM to display the latest messages and animations.
+ * Handles:
+ * - Conversation message state
+ * - Typing indicator during local & Gemini API thinking
+ * - Automatic smooth scrolling to the latest message
+ * - Seamless fallback from local answers to backend Google Gemini API
  */
 function Chatbot() {
-  // Initial state: starts with the bot greeting message
+  // Initial message: bot welcomes user
   const [messages, setMessages] = useState([
     {
       id: 1,
@@ -24,67 +23,117 @@ function Chatbot() {
     },
   ]);
 
-  // isTyping tracks whether the bot is currently "thinking" and displaying animated dots
+  // isTyping disables the input and displays the animated dots
   const [isTyping, setIsTyping] = useState(false);
 
-  // Reference to the bottom of the chat list for smooth scrolling
+  // Ref attached to the bottom anchor element inside the scrollable message area
   const messagesEndRef = useRef(null);
 
-  // Auto-scroll whenever messages or typing state changes
+  // Auto-scroll whenever messages change or typing indicator is toggled
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
   /**
    * Handles user sending a message.
-   * 1. Appends the user's message to state.
+   * 1. Appends the user's message immediately.
    * 2. Shows the typing indicator.
-   * 3. Computes the bot's answer and reveals it after ~1000ms.
+   * 3. Checks for a local response (greetings, date, time, etc.).
+   * 4. If unrecognized, delegates to the secure Gemini backend endpoint (/api/chat).
    */
-  const handleSendMessage = (userText) => {
+  const handleSendMessage = async (userText) => {
     const userMessage = {
       id: Date.now(),
       sender: 'user',
       text: userText,
     };
 
-    // Append user message immediately
-    setMessages((prevMessages) => [...prevMessages, userMessage]);
-
-    // Activate typing indicator
+    const nextHistory = [...messages, userMessage];
+    setMessages(nextHistory);
     setIsTyping(true);
 
-    // Simulate response delay between 800ms - 1200ms (1000ms average)
-    setTimeout(() => {
-      const botReplyText = getBotResponse(userText);
-      const botMessage = {
-        id: Date.now() + 1,
-        sender: 'bot',
-        text: botReplyText,
-      };
+    const localResponse = getLocalBotResponse(userText);
 
-      // Add bot message and dismiss the typing indicator
-      setMessages((prevMessages) => [...prevMessages, botMessage]);
-      setIsTyping(false);
-    }, 1000);
+    if (localResponse !== null) {
+      // Local predefined response (simulate brief 800ms bot reply time)
+      setTimeout(() => {
+        const botMessage = {
+          id: Date.now() + 1,
+          sender: 'bot',
+          text: localResponse,
+        };
+        setMessages((prev) => [...prev, botMessage]);
+        setIsTyping(false);
+      }, 800);
+    } else {
+      // Delegate complex question to backend Gemini API with bounded timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 25000);
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/chat`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: userText,
+            history: nextHistory,
+          }),
+          signal: controller.signal,
+        });
+
+        const data = await response.json();
+        const botReply =
+          data?.reply ||
+          "Sorry, I couldn't get a response right now. Please try again.";
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now() + 1,
+            sender: 'bot',
+            text: botReply,
+          },
+        ]);
+      } catch (err) {
+        console.error('Error fetching chat response:', err);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now() + 1,
+            sender: 'bot',
+            text: "Sorry, I couldn't get a response right now. Please try again.",
+          },
+        ]);
+      } finally {
+        clearTimeout(timeoutId);
+        setIsTyping(false);
+      }
+    }
   };
 
   return (
     <div className="chatbot-container">
-      {/* 1. Input section fixed at top of the chatbot */}
-      <ChatInput onSendMessage={handleSendMessage} disabled={isTyping} />
+      {/* 1. Scrollable messages area taking available vertical space */}
+      <div className="messages-scroll-area">
+        <div className="messages-list">
+          {messages.map((message) => (
+            <ChatMessage key={message.id} message={message} />
+          ))}
 
-      {/* 2. Chat messages rendered dynamically using .map() */}
-      <div className="messages-list">
-        {messages.map((message) => (
-          <ChatMessage key={message.id} message={message} />
-        ))}
+          {/* Typing indicator bubble */}
+          {isTyping && <TypingIndicator />}
 
-        {/* 3. Conditional rendering of the typing dots indicator */}
-        {isTyping && <TypingIndicator />}
+          {/* Anchor to scroll smoothly to newest message */}
+          <div ref={messagesEndRef} />
+        </div>
+      </div>
 
-        {/* Scroll anchor */}
-        <div ref={messagesEndRef} />
+      {/* 2. Fixed/sticky bottom input bar with subtle top border and shadow */}
+      <div className="chat-bottom-bar">
+        <ChatInput onSendMessage={handleSendMessage} disabled={isTyping} />
       </div>
     </div>
   );

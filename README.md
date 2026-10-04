@@ -1,29 +1,22 @@
-# React Chatbot
+# React Chatbot with Google Gemini AI
 
-A clean, beginner-friendly chatbot interface built with **React.js (React 19)**, **JavaScript**, and **Vite**, styled with modern, minimalist plain CSS.
-
-![React Chatbot Preview](public/favicon.svg)
+A modern, beginner-friendly chatbot interface built with **React.js (React 19)**, **JavaScript**, **Vite**, and an **Express + Google Gemini API** backend, styled with a warm **Saffron (`#FF9933`)** theme and minimalist plain CSS.
 
 ---
 
 ## Features
 
-- **Clean Minimalist UI**: Matches the modern layout with rounded light-gray message bubbles, emerald green Send button, and centered container.
-- **Top Input Field**: Responsive input bar positioned at the top with placeholder `"Send a message to Chatbot"` and Enter-key submission support.
-- **Visual Avatar Badges**:
-  - **Bot Avatar**: Circular green badge with an inline SVG robot head.
-  - **User Avatar**: Circular green badge with an inline SVG user silhouette.
-- **Dynamic Messaging via `.map()`**: Renders all messages dynamically from React state without hardcoded JSX entries.
-- **Animated Typing Indicator**: Displays smooth animated pulsing dots (`• • •`) for 800–1200ms when the chatbot is thinking.
-- **Local Bot Intelligence**:
-  - `hello` / `hi` / `hello chatbot` &rarr; `"Hello! How can I help you?"`
-  - `today` / `date` &rarr; Returns current dynamic date using JavaScript `Date` API.
-  - `time` &rarr; Returns current dynamic time formatted via JavaScript `Date` API.
-  - `how are you` &rarr; `"I'm doing great! How can I help you?"`
-  - `what is your name` &rarr; `"I'm your React chatbot."`
-  - Unrecognized messages &rarr; `"Sorry, I don't understand that yet."`
-- **Initial Greeting**: Automatically greets the user with `"Hello! How can I help you?"` on initial mount.
-- **Responsive & Accessible**: Keyboard accessible, form submission handling, disabled states during typing, and mobile-friendly fluid styling.
+- **Bottom Composer Layout**: Sticky/fixed input bar at the bottom with a subtle top border and shadow; scrollable conversation history above.
+- **Saffron Visual Theme**: Consistent `#FF9933` saffron accent applied to the Send button, hover state (`#E68A00`), and circular Bot/User avatars with white icons.
+- **Hybrid Intelligence**:
+  - **Local Responses**: Instant responses for greetings (`hello`, `hi`), date (`today's date`), time (`current time`), identity (`what is your name`), and status (`how are you`).
+  - **Google Gemini Integration**: Complex programming or general questions are securely forwarded to the backend (`POST /api/chat`) running the official Google Gen AI SDK.
+- **Secure Backend Layer**: The `GEMINI_API_KEY` is kept strictly on the Node.js backend (`server/server.js`) and never exposed to client-side code or browser bundles.
+- **Dynamic Messaging via `.map()`**: Renders all messages dynamically from React state.
+- **Animated Typing Indicator**: Displays smooth animated pulsing dots (`• • •`) while local or Gemini responses are generating.
+- **Robust Error Handling**: Handles network, server, and API key errors gracefully with friendly fallback messages.
+- **Initial Greeting**: Greets the user with `"Hello! How can I help you?"` on first load.
+- **Responsive & Accessible**: Seamless fluid layout for mobile, tablet, and desktop viewports.
 
 ---
 
@@ -31,62 +24,74 @@ A clean, beginner-friendly chatbot interface built with **React.js (React 19)**,
 
 ```
 basic-chatbot/
+├── server/
+│   └── server.js           # Express backend connecting to Google Gemini API
 ├── src/
 │   ├── components/
-│   │   ├── Avatars.jsx         # Custom SVG Bot & User avatars
-│   │   ├── Chatbot.jsx         # Main chatbot container & state management
+│   │   ├── Avatars.jsx         # Saffron circular SVG Bot & User avatars
+│   │   ├── Chatbot.jsx         # Main chat container, scrolling & API orchestration
 │   │   ├── ChatInput.jsx       # Controlled text input and Send button form
 │   │   ├── ChatMessage.jsx     # Individual user/bot message bubble renderer
 │   │   └── TypingIndicator.jsx # Animated 3-dot typing bubble
 │   ├── utils/
-│   │   └── chatbotLogic.js     # Bot reply generator & Date API integration
+│   │   └── chatbotLogic.js     # Local rule matcher and fallback delegation
 │   ├── App.jsx                 # App root component
-│   ├── App.css                 # Chat layout, bubble, and animation styles
-│   ├── index.css               # Global CSS reset and typography
+│   ├── App.css                 # Fixed bottom layout and saffron styling
+│   ├── index.css               # Global reset and theme variables
 │   └── main.jsx                # React DOM entry point
+├── .env.example            # Environment variables template
 ├── index.html
 ├── package.json
-└── vite.config.js
+└── vite.config.js          # Vite config with backend proxy (/api)
 ```
 
 ---
 
-## Key React Concepts for Beginners
+## Environment Variables
 
-### 1. Why `useState` is Needed
-In regular JavaScript, updating a variable (like `let messages = []`) does not notify the browser or trigger an interface update.
-`useState` tells React to keep track of this data across renders. Whenever `setMessages` is called, React automatically re-renders the component to show the latest messages on the screen.
+Create a `.env` file in the root directory:
 
-### 2. Controlled Components
-In `ChatInput.jsx`, the text input's value is linked to React state (`inputText`). This ensures that React is the single source of truth for user input, making it easy to validate, clear after submission, and disable when necessary.
+```env
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-2.5-flash
+PORT=5001
+```
 
-### 3. Rendering Lists with `.map()`
-Instead of writing duplicate JSX for each message, `.map()` iterates through the `messages` array and generates a `<ChatMessage />` for every item with a unique `key={message.id}`.
+> **Security Note:** `.env` is included in `.gitignore` and is never committed to Git or exposed in browser bundles.
 
 ---
 
 ## Getting Started
 
-### Prerequisites
-- Node.js (v18 or higher)
-- npm
-
-### Installation
+### 1. Install Dependencies
 ```bash
 npm install
 ```
 
-### Run Development Server
+### 2. Configure Environment
+```bash
+cp .env.example .env
+# Edit .env and insert your Gemini API key
+```
+
+### 3. Start Backend Server
+```bash
+npm run server
+```
+Runs Express server at `http://localhost:5001`.
+
+### 4. Start Frontend
 ```bash
 npm run dev
 ```
+Runs Vite dev server at `http://localhost:5173`.
 
-### Build for Production
+### 5. Build for Production
 ```bash
 npm run build
 ```
 
-### Run Linter
+### 6. Run Linter
 ```bash
 npm run lint
 ```

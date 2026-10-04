@@ -28,8 +28,12 @@ dist-ssr
 .agents/*
 .planning/
 .planning/*
+.env
+.env.local
+.env.*.local
 .env*
 *.env
+!.env.example
 credentials*
 *.pem
 *.key
