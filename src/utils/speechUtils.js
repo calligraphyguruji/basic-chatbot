@@ -34,6 +34,27 @@ export function stripMarkdownForSpeech(text) {
     .trim();
 }
 
+// Voice cache to eliminate asynchronous getVoices() delay on macOS, iOS & Chrome
+let cachedVoices = [];
+
+function refreshVoices() {
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    const list = window.speechSynthesis.getVoices();
+    if (list && list.length > 0) {
+      cachedVoices = list;
+    }
+  }
+  return cachedVoices;
+}
+
+// Immediately attempt voice load & attach listener for async browser population
+if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+  refreshVoices();
+  window.speechSynthesis.onvoiceschanged = () => {
+    refreshVoices();
+  };
+}
+
 /**
  * Finds the highest quality female voice available in the current browser/OS
  * @param {string} [text=''] - Text to be spoken, used to detect script/language
@@ -41,7 +62,7 @@ export function stripMarkdownForSpeech(text) {
  */
 export function getPreferredFemaleVoice(text = '') {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return null;
-  const voices = window.speechSynthesis.getVoices();
+  const voices = refreshVoices();
   if (!voices || voices.length === 0) return null;
 
   const isDevanagari = /[\u0900-\u097F]/.test(text || '');
@@ -49,12 +70,12 @@ export function getPreferredFemaleVoice(text = '') {
   // 1. If text is Devanagari Hindi, target Hindi female voices
   if (isDevanagari) {
     const hindiFemalePatterns = [
-      /lekha/i,
-      /swara/i,
-      /kalpana/i,
+      /lekha/i, // macOS built-in Hindi female
+      /swara/i, // Windows Hindi female
+      /kalpana/i, // Windows Hindi female
       /geeta/i,
-      /veena/i,
-      /google.*(हिन्दी|hindi)/i,
+      /veena/i, // macOS Indian English / Hindi voice
+      /google.*(हिन्दी|hindi)/i, // Chrome Hindi female
       /microsoft.*(swara|kalpana)/i,
     ];
     for (const regex of hindiFemalePatterns) {
@@ -64,7 +85,7 @@ export function getPreferredFemaleVoice(text = '') {
 
     // Any Hindi voice not flagged male
     const anyHindiFemale = voices.find(
-      (v) => v.lang.startsWith('hi') && !/male|david|mark|george/i.test(v.name)
+      (v) => v.lang.startsWith('hi') && !/male|david|mark|george|alex/i.test(v.name)
     );
     if (anyHindiFemale) return anyHindiFemale;
 
@@ -72,10 +93,10 @@ export function getPreferredFemaleVoice(text = '') {
     if (fallbackHindi) return fallbackHindi;
   }
 
-  // 2. For Hinglish (Hindi in Latin script) or Indian English, prioritize Indian female voices
-  // (e.g. Veena, Heera, Neerja, Google en-IN) as they have natural Indian phonetics for Hinglish
+  // 2. For Hinglish or Indian English, prioritize Indian female voices
+  // (macOS Veena, Windows Heera/Neerja, Google en-IN)
   const indianFemalePatterns = [
-    /veena/i,
+    /veena/i, // macOS primary Indian English female
     /heera/i,
     /neerja/i,
     /google.*(india|in\b)/i,
@@ -86,19 +107,20 @@ export function getPreferredFemaleVoice(text = '') {
     if (match) return match;
   }
 
-  // 3. Ranked global high-quality female voices across macOS, iOS, Chrome, Edge, and Windows
+  // 3. Ranked macOS, iOS, Windows, and Chrome global female voices
+  // (macOS: Samantha and Victoria are pre-installed female voices)
   const preferredFemaleNames = [
-    /samantha/i,
-    /google us english/i,
+    /samantha/i, // Primary macOS/iOS female voice
+    /victoria/i, // macOS US female voice
+    /karen/i, // macOS Australian female voice
+    /tessa/i, // macOS South African female voice
+    /moira/i, // macOS Irish female voice
+    /fiona/i, // macOS Scottish female voice
+    /google us english/i, // Chrome female voice
     /google uk english female/i,
     /microsoft aria/i,
     /microsoft jenny/i,
     /microsoft zira/i,
-    /karen/i,
-    /victoria/i,
-    /fiona/i,
-    /tessa/i,
-    /moira/i,
   ];
 
   for (const regex of preferredFemaleNames) {
@@ -106,7 +128,13 @@ export function getPreferredFemaleVoice(text = '') {
     if (match) return match;
   }
 
-  // Any English voice with "female" in its name
+  // Siri female voices on macOS
+  const siriFemale = voices.find(
+    (v) => /siri/i.test(v.name) && !/male|voice 1|voice 3/i.test(v.name)
+  );
+  if (siriFemale) return siriFemale;
+
+  // Any voice explicitly tagged "female"
   const taggedFemale = voices.find(
     (v) => (v.lang.startsWith('en') || v.lang.startsWith('hi')) && /female/i.test(v.name)
   );
@@ -151,7 +179,7 @@ export function speakText(text, { onStart, onEnd, onError } = {}) {
   utterance.pitch = 1.08; // Warm, natural feminine pitch
   utterance.lang = isDevanagari ? 'hi-IN' : 'en-IN';
 
-  // Apply preferred female voice
+  // Apply preferred female voice (pre-cached or retrieved)
   const femaleVoice = getPreferredFemaleVoice(cleanText);
   if (femaleVoice) {
     utterance.voice = femaleVoice;
@@ -171,6 +199,22 @@ export function speakText(text, { onStart, onEnd, onError } = {}) {
       onEnd?.();
     }
   };
+
+  // If voices are still loading asynchronously, hook once to assign female voice before speech
+  if (!femaleVoice && cachedVoices.length === 0) {
+    const origHandler = window.speechSynthesis.onvoiceschanged;
+    window.speechSynthesis.onvoiceschanged = () => {
+      refreshVoices();
+      const loadedFemale = getPreferredFemaleVoice(cleanText);
+      if (loadedFemale) {
+        utterance.voice = loadedFemale;
+        if (loadedFemale.lang) utterance.lang = loadedFemale.lang;
+      }
+      window.speechSynthesis.speak(utterance);
+      if (typeof origHandler === 'function') origHandler();
+    };
+    return utterance;
+  }
 
   window.speechSynthesis.speak(utterance);
   return utterance;
