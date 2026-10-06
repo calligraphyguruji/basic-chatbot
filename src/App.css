@@ -386,6 +386,17 @@
   background-color: var(--primary-saffron);
 }
 
+.brand-badge-tag {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background-color: rgba(255, 112, 67, 0.15);
+  color: var(--primary-saffron);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
 .navbar-right {
   display: flex;
   align-items: center;

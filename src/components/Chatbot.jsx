@@ -43,7 +43,7 @@ function Chatbot() {
     {
       id: 1,
       sender: 'bot',
-      text: 'Hello! I am your AI assistant. How can I help you today?',
+      text: 'Namaste! I am Bodhisakha (बोधिसखा), your personal AI assistant and intellectual companion. How can I help you today?',
     },
   ]);
 
@@ -457,7 +457,8 @@ function Chatbot() {
             </button>
             <div className="assistant-brand-title">
               <span className="brand-badge-dot"></span>
-              <h1>AI Assistant</h1>
+              <h1>Bodhisakha</h1>
+              <span className="brand-badge-tag">AI</span>
             </div>
           </div>
 

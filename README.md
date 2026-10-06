@@ -1,6 +1,6 @@
-# AI Assistant (ChatGPT-grade Conversational AI)
+# Bodhisakha (बोधिसखा) — Production AI Assistant
 
-A full-stack, production-grade conversational AI assistant built with **React 19**, **Vite**, **Express**, and **Google Gemini AI**. Designed with a warm **Saffron (`#FF9933`)** aesthetic, multi-turn dialogue persistence, multi-user authentication, long-term personal memory, document understanding, AI image generation, deep reasoning, and native **Vercel Serverless Function** deployment.
+A full-stack, production-grade conversational AI assistant built with **React 19**, **Vite**, **Express**, and **Google Gemini AI**. Designed with authentic Sanskrit identity (*Bodhisakha* — "Companion of Wisdom"), a warm **Saffron (`#FF9933`)** aesthetic, multi-turn dialogue persistence, multi-user authentication, long-term personal memory, document understanding, AI image generation, deep reasoning, and optimized for **Vercel Serverless Function** deployment.
 
 Created and owned by **Mr. Aman Mishra**.
 

@@ -1,7 +1,7 @@
 import { extractAuthUser } from './lib/auth.js';
 import { db } from './lib/db.js';
 import { writeCorsHeaders } from './lib/cors.js';
-import pdfParse from 'pdf-parse';
+import { PDFParse } from 'pdf-parse';
 import mammoth from 'mammoth';
 
 const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB limit
@@ -40,8 +40,9 @@ async function parseFileContent(buffer, mimeType, filename) {
   // 2. PDF extraction
   if (mimeType === 'application/pdf' || ext === 'pdf') {
     try {
-      const data = await pdfParse(buffer);
-      return data.text || '';
+      const parser = new PDFParse({ data: buffer });
+      const textResult = await parser.getText();
+      return (textResult?.text || textResult || '').trim();
     } catch (e) {
       console.warn('PDF parse error:', e.message);
       return '';
