@@ -1,7 +1,7 @@
-import { classifyIntent, TASK_TYPES } from '../api/endpoints/intent.js';
-import { retrieveKnowledge } from '../api/endpoints/rag.js';
-import { searchWeb } from '../api/endpoints/search.js';
-import handler from '../api/endpoints/chat.js';
+import { classifyIntent, TASK_TYPES } from '../server/endpoints/intent.js';
+import { retrieveKnowledge } from '../server/endpoints/rag.js';
+import { searchWeb } from '../server/endpoints/search.js';
+import handler from '../server/endpoints/chat.js';
 
 let passed = 0;
 let total = 0;

@@ -1,9 +1,9 @@
-import authHandler from './endpoints/auth.js';
-import chatHandler from './endpoints/chat.js';
-import conversationsHandler from './endpoints/conversations.js';
-import filesHandler from './endpoints/files.js';
-import imagesHandler from './endpoints/images.js';
-import memoryHandler from './endpoints/memory.js';
+import authHandler from '../server/endpoints/auth.js';
+import chatHandler from '../server/endpoints/chat.js';
+import conversationsHandler from '../server/endpoints/conversations.js';
+import filesHandler from '../server/endpoints/files.js';
+import imagesHandler from '../server/endpoints/images.js';
+import memoryHandler from '../server/endpoints/memory.js';
 
 export const config = {
   maxDuration: 60,

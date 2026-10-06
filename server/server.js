@@ -1,13 +1,13 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import chatHandler from '../api/endpoints/chat.js';
-import authHandler from '../api/endpoints/auth.js';
-import conversationsHandler from '../api/endpoints/conversations.js';
-import memoryHandler from '../api/endpoints/memory.js';
-import filesHandler from '../api/endpoints/files.js';
-import imagesHandler from '../api/endpoints/images.js';
-import { initDb } from '../api/endpoints/lib/db.js';
+import chatHandler from './endpoints/chat.js';
+import authHandler from './endpoints/auth.js';
+import conversationsHandler from './endpoints/conversations.js';
+import memoryHandler from './endpoints/memory.js';
+import filesHandler from './endpoints/files.js';
+import imagesHandler from './endpoints/images.js';
+import { initDb } from './endpoints/lib/db.js';
 
 dotenv.config();
 dotenv.config({ path: '.env.local', override: true });

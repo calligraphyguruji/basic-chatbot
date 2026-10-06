@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { db } from '../api/endpoints/lib/db.js';
-import { hashPassword, comparePassword, signToken, verifyToken } from '../api/endpoints/lib/auth.js';
-import { extractMemoriesFromConversation, formatMemoriesForPrompt } from '../api/endpoints/lib/memory.js';
+import { db } from '../server/endpoints/lib/db.js';
+import { hashPassword, comparePassword, signToken, verifyToken } from '../server/endpoints/lib/auth.js';
+import { extractMemoriesFromConversation, formatMemoriesForPrompt } from '../server/endpoints/lib/memory.js';
 
 test('Security & Persistence Suite', async (t) => {
   await t.test('Password hashing and verification', async () => {
