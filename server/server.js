@@ -82,32 +82,32 @@ app.get(['/', '/health', '/api/health'], (req, res) => {
 });
 
 // Auth endpoints
-app.all(['/api/auth', '/api/auth/*'], (req, res) => {
+app.use('/api/auth', (req, res) => {
   return authHandler(req, res);
 });
 
 // Conversations endpoints
-app.all(['/api/conversations', '/api/conversations/*'], (req, res) => {
+app.use('/api/conversations', (req, res) => {
   return conversationsHandler(req, res);
 });
 
 // Memory endpoints
-app.all(['/api/memory', '/api/memory/*'], (req, res) => {
+app.use('/api/memory', (req, res) => {
   return memoryHandler(req, res);
 });
 
 // File upload endpoints
-app.all(['/api/files', '/api/files/*'], (req, res) => {
+app.use('/api/files', (req, res) => {
   return filesHandler(req, res);
 });
 
 // Image generation endpoints
-app.all(['/api/images', '/api/images/*'], (req, res) => {
+app.use('/api/images', (req, res) => {
   return imagesHandler(req, res);
 });
 
-// Chat endpoint (delegates to the Vercel-native serverless handler in api/chat.js)
-app.all('/api/chat', (req, res) => {
+// Chat endpoint
+app.use('/api/chat', (req, res) => {
   return chatHandler(req, res);
 });
 
