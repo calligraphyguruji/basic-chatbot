@@ -10,13 +10,18 @@ const LOCAL_DB_FILE = path.join(DATA_DIR, 'db.json');
 
 let pool = null;
 
-if (process.env.DATABASE_URL) {
+function getPool() {
+  if (pool) return pool;
+  const connStr = process.env.DATABASE_URL;
+  if (!connStr) return null;
+
   pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false },
+    connectionString: connStr,
+    ssl: connStr.includes('localhost') ? false : { rejectUnauthorized: false },
     max: 10,
     idleTimeoutMillis: 30000,
   });
+  return pool;
 }
 
 function initLocalStore() {
@@ -54,12 +59,13 @@ function writeLocalStore(data) {
  * Initializes database tables if using PostgreSQL
  */
 export async function initDb() {
-  if (!pool) {
+  const activePool = getPool();
+  if (!activePool) {
     initLocalStore();
     return;
   }
 
-  const client = await pool.connect();
+  const client = await activePool.connect();
   try {
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -128,13 +134,14 @@ export async function initDb() {
 
 // Low-overhead storage queries
 export const db = {
-  isPostgres: () => Boolean(pool),
+  isPostgres: () => Boolean(getPool()),
 
   // USERS
   async findUserByEmail(email) {
     const cleanEmail = email.toLowerCase().trim();
-    if (pool) {
-      const res = await pool.query('SELECT * FROM users WHERE LOWER(email) = $1 LIMIT 1', [cleanEmail]);
+    const p = getPool();
+    if (p) {
+      const res = await p.query('SELECT * FROM users WHERE LOWER(email) = $1 LIMIT 1', [cleanEmail]);
       return res.rows[0] || null;
     }
     const store = readLocalStore();
