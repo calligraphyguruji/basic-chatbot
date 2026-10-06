@@ -680,8 +680,8 @@ State the weather and temperature clearly, mention humidity, and append "*Source
     // When reasoningMode is requested, prioritize reasoning-capable models with higher depth
     const candidateModels = (
       reasoningMode
-        ? ['gemini-2.5-pro', 'gemini-1.5-pro', configuredModel, 'gemini-flash-latest', 'gemini-2.5-flash']
-        : ['gemini-flash-latest', configuredModel, 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
+        ? ['gemini-2.5-pro', configuredModel, 'gemini-2.5-flash', 'gemini-flash-latest']
+        : [configuredModel, 'gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.5-pro']
     ).filter((m, idx, arr) => m && arr.indexOf(m) === idx);
 
     let replyText = '';
