@@ -36,9 +36,20 @@ Created and owned by **Mr. Aman Mishra**.
 
 ### 4. File Upload & Multi-Format Document Understanding
 - Supports **PDF**, **DOCX**, **TXT**, **CSV**, **JSON**, **PNG**, **JPG**, and **WEBP** attachments up to 15MB.
-- Server-side text extraction using `pdf-parse` and `mammoth`.
+- Serverless-native text extraction using `unpdf` and `mammoth` (no DOM/canvas dependencies; fully operational on Vercel Serverless and local Node.js environments).
+- Seamless document Q&A for both logged-in users (persisted in database) and guest users (processed directly in memory).
 - Uploaded file chips appear above the composer and in message bubbles.
-- Document text is indexed and provided directly to the AI model for deep document Q&A.
+- Document text is indexed and provided directly to the AI model as ground truth context for document Q&A.
+
+### 5. Intelligent Adaptive Response Length Policy
+- **Simple Questions & Facts** (definitions, full forms, basic calculations): 1–4 sentences max, zero conversational throat-clearing.
+- **Medium Inquiries** (how things work, conceptual summaries, comparisons): concise structured explanation with 2–4 key points.
+- **Complex Tasks & Architecture** (system design, complete implementations, formula sheets): deep, structured responses.
+- Explicit user prompts (`short answer`, `in one line`, `in detail`) take strict precedence.
+
+### 6. Robust Model Request Cascade & Structured Errors
+- Cascade across valid Gemini models (`gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-flash-latest`) with transient 429/5xx exponential backoff retries.
+- Structured RFC-compliant error payloads (`{ success: false, error: { code, message, retryable } }`) with transparent logging for diagnostics.
 
 ### 5. Deep Thinking / Reasoning Mode
 - Toggle button (`🧠 Deep Thinking`) in the chat composer.

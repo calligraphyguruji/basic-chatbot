@@ -82,9 +82,6 @@ export default async function handler(req, res) {
   }
 
   const user = extractAuthUser(req);
-  if (!user) {
-    return res.status(401).json({ error: 'Please sign in to upload files.' });
-  }
 
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = url.pathname.replace(/\/+$/, '');
@@ -93,6 +90,9 @@ export default async function handler(req, res) {
 
   // DELETE FILE
   if (req.method === 'DELETE' && fileId) {
+    if (!user) {
+      return res.status(401).json({ error: 'Please sign in to delete files.' });
+    }
     await db.deleteFile(fileId, user.id);
     return res.status(200).json({ success: true });
   }
@@ -121,12 +121,36 @@ export default async function handler(req, res) {
     }
 
     const mime = fileType || 'application/octet-stream';
-    const extractedText = await parseFileContent(buffer, mime, fileName);
+    let extractedText = '';
+    try {
+      extractedText = await parseFileContent(buffer, mime, fileName);
+    } catch (parseErr) {
+      console.error('[Document Extraction Error]:', parseErr);
+      return res.status(422).json({
+        error: 'Failed to extract text from document.',
+        details: parseErr.message,
+      });
+    }
 
     const newFileId = 'file_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
     const storageUrl = mime.startsWith('image/')
       ? `data:${mime};base64,${base64Content}`
       : null;
+
+    if (!user) {
+      // Unauthenticated / Guest upload: return parsed text directly for in-memory session
+      return res.status(200).json({
+        file: {
+          id: newFileId,
+          fileName,
+          fileType: mime,
+          fileSize: buffer.length,
+          hasText: Boolean(extractedText),
+          storageUrl,
+          extractedText: (extractedText || '').slice(0, 100000),
+        },
+      });
+    }
 
     const saved = await db.createUploadedFile({
       id: newFileId,
@@ -147,6 +171,7 @@ export default async function handler(req, res) {
         fileSize: saved.file_size,
         hasText: Boolean(saved.extracted_text),
         storageUrl: saved.storage_url,
+        extractedText: saved.extracted_text,
       },
     });
   } catch (err) {

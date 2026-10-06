@@ -202,15 +202,11 @@ function Chatbot() {
 
   // File Upload helper
   const handleFileUpload = async ({ fileName, fileType, fileData }) => {
-    if (!user) {
-      // In guest mode, store in memory
-      return { fileName, fileType, fileData, extractedText: 'Guest document context' };
-    }
     return AIService.uploadFile({
       fileName,
       fileType,
       fileData,
-      conversationId: activeConversationId,
+      conversationId: activeConversationId || null,
     });
   };
 
@@ -338,8 +334,20 @@ function Chatbot() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
+        console.error('[Chat API Error Detail]:', {
+          status: response.status,
+          statusText: response.statusText,
+          errorCode: data?.error?.code,
+          errorMessage: data?.error?.message,
+          errorDetails: data?.error?.details,
+          fullData: data,
+        });
+
         const serverErrorMessage =
-          data?.reply || data?.error || 'Unable to retrieve a response right now. Please try again.';
+          data?.error?.message ||
+          data?.reply ||
+          (typeof data?.error === 'string' ? data.error : null) ||
+          "Sorry, I couldn't generate a response right now. Please try again.";
 
         setMessages((prev) => [
           ...prev,

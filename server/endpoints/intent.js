@@ -103,8 +103,14 @@ const ACADEMIC_SUBJECT_PATTERNS = [
   /\b(data\s+structures|algorithms|operating\s+systems|dbms|normalization|computer\s+networks|oops|sql)\b/i,
 ];
 
+export const COMPLEXITY_LEVELS = {
+  SIMPLE: 'SIMPLE',
+  MEDIUM: 'MEDIUM',
+  COMPLEX: 'COMPLEX',
+};
+
 /**
- * Classifies a user message to determine intent, tasks, and context needs.
+ * Classifies query intent, requested complexity level, and task constraints
  * @param {string} message - Raw user input
  * @returns {Object} Classified intent metadata
  */
@@ -113,15 +119,21 @@ export function classifyIntent(message) {
   if (!query) {
     return {
       primaryTask: TASK_TYPES.CONVERSATIONAL,
+      complexity: COMPLEXITY_LEVELS.SIMPLE,
+      maxOutputTokens: 512,
       isMultiTask: false,
       subTasks: [],
       needsCurrentInfo: false,
       needsKnowledgeBase: false,
-      formatInstructions: 'Provide a brief, natural response.',
+      formatInstructions: 'Give a direct, concise 1–2 sentence answer. No filler.',
     };
   }
 
-  // Identify matching tasks
+  // 1. Check explicit user length commands (Overrides everything)
+  const explicitShort = /\b(short\s+answer|briefly|in\s+one\s+line|in\s+short|tl;?dr|just\s+the\s+answer|explain\s+simply|concisely|to\s+the\s+point)\b/i.test(query);
+  const explicitDetailed = /\b(in\s+detail|deep\s+dive|explain\s+everything|step\s+by\s+step|complete\s+(explanation|implementation|guide)|comprehensively|thoroughly)\b/i.test(query);
+
+  // 2. Identify matching tasks
   const matchedTasks = [];
   const instructionsList = [];
 
@@ -132,30 +144,68 @@ export function classifyIntent(message) {
     }
   }
 
-  // Default to CONVERSATIONAL if no specific task matched
   const primaryTask = matchedTasks[0] || TASK_TYPES.CONVERSATIONAL;
   const isMultiTask = matchedTasks.length > 1;
 
-  // Check if query is time-sensitive (needs web search)
+  // 3. Determine Complexity Level (SIMPLE, MEDIUM, COMPLEX)
+  let complexity = COMPLEXITY_LEVELS.MEDIUM;
+  let maxTokens = 2048;
+
+  // Simple patterns: full forms, simple definitions, single facts, math calculations
+  const isSimplePattern =
+    /^(what\s+is\s+(the\s+)?full\s+form\s+of|full\s+form(\s+of)?|meaning\s+of|define|who\s+(created|invented|made)|when\s+was|where\s+is|\d+\s*[\+\-\*\/]\s*\d+)/i.test(query) ||
+    /^(what\s+is\s+([a-zA-Z0-9_\-\.\+]{1,25})\??)$/i.test(query) ||
+    /^[a-zA-Z0-9_\-\.\+]{1,20}\s+(full\s+form|meaning)\??$/i.test(query) ||
+    (query.split(/\s+/).length <= 4 && /^(what|who|when|where|which|how\s+much)\b/i.test(query));
+
+  // Complex patterns: explicitly detailed requests, system design, architecture, complete implementations, formula sheets, multi-task (3+ tasks)
+  const isComplexPattern =
+    explicitDetailed ||
+    matchedTasks.length >= 3 ||
+    /\b(system\s+design|architecture|complete\s+(code|implementation|guide)|build\s+a\s+(full|rag|chatbot|production)|step\s+by\s+step\s+implementation)\b/i.test(query) ||
+    [TASK_TYPES.FORMULA_SHEET, TASK_TYPES.STEP_BY_STEP, TASK_TYPES.STUDY_PLAN].includes(primaryTask);
+
+  if (explicitShort || (isSimplePattern && !explicitDetailed)) {
+    complexity = COMPLEXITY_LEVELS.SIMPLE;
+    maxTokens = 512;
+  } else if (isComplexPattern) {
+    complexity = COMPLEXITY_LEVELS.COMPLEX;
+    maxTokens = 4096;
+  } else {
+    // Medium covers standard conceptual questions: "How does Node.js work?", "Difference between X and Y", "Explain REST API"
+    complexity = COMPLEXITY_LEVELS.MEDIUM;
+    maxTokens = 2048;
+  }
+
+  // 4. Construct adaptive format instructions
+  let formatInstructions = instructionsList.join('\n\n');
+  if (complexity === COMPLEXITY_LEVELS.SIMPLE) {
+    formatInstructions =
+      'KEEP ANSWER STRICTLY SHORT: Provide a direct, concise answer in 1–4 sentences. Give definition and one short example if helpful. Do NOT include history, background, lengthy essays, or unprompted sections unless asked.';
+  } else if (complexity === COMPLEXITY_LEVELS.MEDIUM) {
+    formatInstructions =
+      formatInstructions ||
+      'Provide a concise structured answer: a short explanation, 2–4 key points or distinctions, and a small example if useful. Avoid unnecessary boilerplate or essays.';
+  } else {
+    formatInstructions =
+      formatInstructions ||
+      'Provide a thorough, well-structured explanation with clear Markdown headers, bullet points, and code/formulas where helpful.';
+  }
+
+  // 5. Time sensitivity & academic topic
   const explicitSearch = /\b(search\s+(the\s+)?web|google\s+it|browse\s+online|look\s+up\s+online)\b/i.test(query);
   const isTimeSensitive = TIME_SENSITIVE_PATTERNS.some((p) => p.test(query));
   const needsCurrentInfo = explicitSearch || isTimeSensitive;
 
-  // Check if query is educational/subject knowledge (candidate for RAG)
   const isAcademicTopic = ACADEMIC_SUBJECT_PATTERNS.some((p) => p.test(query));
   const needsKnowledgeBase =
     isAcademicTopic ||
     [TASK_TYPES.FORMULA_SHEET, TASK_TYPES.NOTES, TASK_TYPES.MCQ, TASK_TYPES.STEP_BY_STEP].includes(primaryTask);
 
-  // Combine task instructions
-  let formatInstructions = instructionsList.join('\n\n');
-  if (!formatInstructions) {
-    formatInstructions =
-      'Answer clearly, accurately, and thoroughly according to the user request. Use Markdown formatting and LaTeX math syntax where appropriate.';
-  }
-
   return {
     primaryTask,
+    complexity,
+    maxOutputTokens: maxTokens,
     isMultiTask,
     subTasks: matchedTasks,
     needsCurrentInfo,
