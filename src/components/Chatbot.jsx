@@ -1,60 +1,192 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import ChatInput from './ChatInput';
 import ChatMessage from './ChatMessage';
 import TypingIndicator from './TypingIndicator';
+import Sidebar from './Sidebar';
+import AuthModal from './AuthModal';
+import MemoryModal from './MemoryModal';
+import SettingsModal from './SettingsModal';
 import { getLocalBotResponse } from '../utils/chatbotLogic';
 import { speakText, stopSpeech } from '../utils/speechUtils';
+import { useAuth } from '../context/useAuth';
+import { AIService } from '../services/aiService';
 
-/**
- * Chatbot Component
- *
- * Handles:
- * - Conversation message state
- * - Typing indicator during local & Gemini API thinking
- * - Automatic smooth scrolling to the latest message
- * - Text-to-speech playback and stop controls
- * - Seamless fallback from local answers to backend Google Gemini API
- */
+const SUGGESTIONS = [
+  'Explain a programming concept',
+  'Analyze my PDF document',
+  'Help me debug code',
+  'Generate an image of a futuristic city',
+  'Help me plan a full-stack project',
+];
+
 function Chatbot() {
-  // Initial message: bot welcomes user
+  const { user } = useAuth();
+
+  // App Theme: 'light' or 'dark'
+  const [theme, setTheme] = useState(() => localStorage.getItem('app_theme') || 'light');
+
+  // Sidebar visibility
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Modals state
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [memoryModalOpen, setMemoryModalOpen] = useState(false);
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+
+  // Conversations & Search state
+  const [conversations, setConversations] = useState([]);
+  const [activeConversationId, setActiveConversationId] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Messages state
   const [messages, setMessages] = useState([
     {
       id: 1,
       sender: 'bot',
-      text: 'Hello! How can I help you?',
+      text: 'Hello! I am your AI assistant. How can I help you today?',
     },
   ]);
 
-  // isTyping disables the input and displays the animated dots
-  const [isTyping, setIsTyping] = useState(false);
+  // Deep Thinking toggle
+  const [reasoningMode, setReasoningMode] = useState(false);
 
-  // Tracks which bot message is actively playing speech
+  // Status & Speech
+  const [isTyping, setIsTyping] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('');
   const [speakingMessageId, setSpeakingMessageId] = useState(null);
 
-  // Ref attached to the bottom anchor element inside the scrollable message area
   const messagesEndRef = useRef(null);
-
-  // Ref tracking pending local response timeout
   const localTimerRef = useRef(null);
+  const abortControllerRef = useRef(null);
 
-  // Auto-scroll whenever messages change or typing indicator is toggled
+  // Theme synchronization
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('app_theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+  };
+
+  // Scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
-  // Clean up any ongoing speech synthesis and timers on unmount
+  // Clean up timers & speech
   useEffect(() => {
     return () => {
       stopSpeech();
-      if (localTimerRef.current) {
-        clearTimeout(localTimerRef.current);
-      }
+      if (localTimerRef.current) clearTimeout(localTimerRef.current);
+      if (abortControllerRef.current) abortControllerRef.current.abort();
     };
   }, []);
 
-  /**
-   * Toggles speech playback for a specific bot message
-   */
+  // Load conversations when user logs in or search changes
+  const loadConversations = useCallback(async (query = '') => {
+    if (!user) {
+      setConversations([]);
+      return;
+    }
+    try {
+      const list = await AIService.getConversations(query);
+      setConversations(list);
+    } catch (err) {
+      console.warn('Failed to load conversations:', err.message);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadConversations(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [loadConversations, searchQuery]);
+
+  // Select conversation and load its messages
+  const handleSelectConversation = async (convId) => {
+    if (!convId || convId === activeConversationId) return;
+    setActiveConversationId(convId);
+    setSidebarOpen(false); // Close drawer on mobile
+    try {
+      const data = await AIService.getConversation(convId);
+      if (data.messages && data.messages.length > 0) {
+        setMessages(
+          data.messages.map((m) => ({
+            id: m.id,
+            sender: m.role === 'user' ? 'user' : 'bot',
+            text: m.content,
+            model: m.model,
+            imageUrl: m.metadata?.imageUrl,
+          }))
+        );
+      } else {
+        setMessages([
+          {
+            id: Date.now(),
+            sender: 'bot',
+            text: `Conversation loaded: "${data.conversation?.title || 'Chat'}". How can I assist you?`,
+          },
+        ]);
+      }
+    } catch (err) {
+      console.error('Failed to load conversation history:', err);
+    }
+  };
+
+  // New Chat
+  const handleNewChat = async () => {
+    setActiveConversationId(null);
+    setMessages([
+      {
+        id: Date.now(),
+        sender: 'bot',
+        text: 'How can I help you today?',
+      },
+    ]);
+    setSidebarOpen(false);
+  };
+
+  // Rename Conversation
+  const handleRenameConversation = async (id, title) => {
+    try {
+      await AIService.updateConversation(id, { title });
+      setConversations((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, title } : c))
+      );
+    } catch (err) {
+      console.error('Rename failed:', err);
+    }
+  };
+
+  // Delete Conversation
+  const handleDeleteConversation = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this conversation?')) return;
+    try {
+      await AIService.deleteConversation(id);
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+      if (activeConversationId === id) {
+        handleNewChat();
+      }
+    } catch (err) {
+      console.error('Delete conversation failed:', err);
+    }
+  };
+
+  // Pin / Unpin Conversation
+  const handleTogglePin = async (id, pinned) => {
+    try {
+      await AIService.updateConversation(id, { pinned });
+      setConversations((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, pinned } : c))
+      );
+    } catch (err) {
+      console.error('Pin toggle failed:', err);
+    }
+  };
+
+  // Toggle Speech
   const handleToggleSpeak = (id, text) => {
     if (speakingMessageId === id) {
       stopSpeech();
@@ -68,16 +200,73 @@ function Chatbot() {
     }
   };
 
-  /**
-   * Handles user sending a message.
-   * 1. Appends the user's message immediately.
-   * 2. Stops any playing speech.
-   * 3. Shows the typing indicator.
-   * 4. Checks for a local response (greetings, date, time, etc.).
-   * 5. If unrecognized, delegates to the secure Gemini backend endpoint (/api/chat).
-   */
-  const handleSendMessage = async (userText) => {
-    // Stop ongoing speech when a new message is submitted
+  // File Upload helper
+  const handleFileUpload = async ({ fileName, fileType, fileData }) => {
+    if (!user) {
+      // In guest mode, store in memory
+      return { fileName, fileType, fileData, extractedText: 'Guest document context' };
+    }
+    return AIService.uploadFile({
+      fileName,
+      fileType,
+      fileData,
+      conversationId: activeConversationId,
+    });
+  };
+
+  // Image Generation handler
+  const handleGenerateImage = async (prompt) => {
+    if (!user) {
+      setAuthModalOpen(true);
+      return;
+    }
+    stopSpeech();
+    setSpeakingMessageId(null);
+
+    const userMessage = {
+      id: Date.now(),
+      sender: 'user',
+      text: `Generate an image: "${prompt}"`,
+    };
+    setMessages((prev) => [...prev, userMessage]);
+    setIsTyping(true);
+    setStatusMessage('Creating image with AI...');
+
+    try {
+      let convId = activeConversationId;
+      if (!convId) {
+        const title = `Image: ${prompt.slice(0, 30)}`;
+        const newConv = await AIService.createConversation(title);
+        convId = newConv.id;
+        setActiveConversationId(convId);
+        loadConversations();
+      }
+
+      const res = await AIService.generateImage(prompt);
+      const botMessage = {
+        id: Date.now() + 1,
+        sender: 'bot',
+        text: `Here is your generated image: "${prompt}"`,
+        imageUrl: res.imageUrl,
+      };
+      setMessages((prev) => [...prev, botMessage]);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now() + 1,
+          sender: 'bot',
+          text: `Image generation failed: ${err.message || 'Please try again later.'}`,
+        },
+      ]);
+    } finally {
+      setIsTyping(false);
+      setStatusMessage('');
+    }
+  };
+
+  // Send Message handler
+  const handleSendMessage = async (userText, attachments = []) => {
     stopSpeech();
     setSpeakingMessageId(null);
 
@@ -85,161 +274,291 @@ function Chatbot() {
       id: Date.now(),
       sender: 'user',
       text: userText,
+      attachments,
     };
 
     const nextHistory = [...messages, userMessage];
     setMessages(nextHistory);
     setIsTyping(true);
+    setStatusMessage(reasoningMode ? 'Thinking deeply through the problem...' : 'Thinking...');
 
-    const localResponse = getLocalBotResponse(userText);
-
-    if (localResponse !== null) {
-      // Local predefined response (simulate brief 800ms bot reply time)
-      localTimerRef.current = setTimeout(() => {
-        const botMessage = {
-          id: Date.now() + 1,
-          sender: 'bot',
-          text: localResponse,
-        };
-        setMessages((prev) => [...prev, botMessage]);
-        setIsTyping(false);
-      }, 800);
-    } else {
-      // Delegate complex question to backend Gemini API with 60s timeout for large generation
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000);
-
+    // Auto-create persistent conversation on first turn if user is logged in
+    let currentConvId = activeConversationId;
+    if (user && !currentConvId) {
       try {
-        const response = await fetch('/api/chat', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            message: userText,
-            history: nextHistory,
-            stream: true,
-          }),
-          signal: controller.signal,
-        });
+        const titleSnippet = userText.slice(0, 36) + (userText.length > 36 ? '...' : '');
+        const createdConv = await AIService.createConversation(titleSnippet || 'New Chat');
+        currentConvId = createdConv.id;
+        setActiveConversationId(createdConv.id);
+        loadConversations();
+      } catch (e) {
+        console.warn('Could not auto-create conversation:', e);
+      }
+    }
 
-        const contentType = response.headers.get('content-type') || '';
-
-        if (!response.ok) {
-          const data = await response.json().catch(() => null);
-          console.error('Gemini API response:', data);
-          const serverErrorMessage =
-            data?.reply ||
-            data?.details ||
-            data?.error ||
-            "Unable to retrieve a response right now. Please try again.";
-
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: Date.now() + 1,
-              sender: 'bot',
-              text: serverErrorMessage,
-            },
-          ]);
-          return;
-        }
-
-        if (contentType.includes('text/plain') && response.body) {
-          const reader = response.body.getReader();
-          const decoder = new TextDecoder();
-          const botMessageId = Date.now() + 1;
-          let streamedText = '';
-
-          // Dismiss typing indicator as soon as stream begins
+    // Local heuristic check for instant answers if no files attached
+    if (attachments.length === 0) {
+      const localResponse = getLocalBotResponse(userText);
+      if (localResponse !== null) {
+        localTimerRef.current = setTimeout(() => {
+          const botMessage = {
+            id: Date.now() + 1,
+            sender: 'bot',
+            text: localResponse,
+          };
+          setMessages((prev) => [...prev, botMessage]);
           setIsTyping(false);
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: botMessageId,
-              sender: 'bot',
-              text: '',
-            },
-          ]);
+          setStatusMessage('');
+        }, 600);
+        return;
+      }
+    }
 
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            streamedText += decoder.decode(value, { stream: true });
-            setMessages((prev) =>
-              prev.map((m) => (m.id === botMessageId ? { ...m, text: streamedText } : m))
-            );
-          }
+    // Prepare combined file context text if documents were attached
+    const fileContextText = attachments
+      .map((a) => (a.extractedText || a.fileName ? `[File: ${a.fileName}]\n${a.extractedText || ''}` : ''))
+      .filter(Boolean)
+      .join('\n\n');
 
-          if (!streamedText.trim()) {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === botMessageId
-                  ? { ...m, text: "I didn't receive a response. Please try again." }
-                  : m
-              )
-            );
-          }
-        } else {
-          const data = await response.json().catch(() => null);
-          const botReply = data?.reply || "I didn't receive a response.";
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: Date.now() + 1,
-              sender: 'bot',
-              text: botReply,
-            },
-          ]);
-        }
-      } catch (err) {
-        console.error('Chat API error:', err);
-        const fallbackText =
-          err?.name === 'AbortError'
-            ? 'The response took longer than 60 seconds to generate. Please try asking a slightly more specific question or try again.'
-            : "Unable to connect to the chat server. Please verify your network connection or server status.";
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const timeoutId = setTimeout(() => controller.abort(), 90000);
+
+    try {
+      const response = await AIService.sendMessage({
+        message: userText,
+        history: nextHistory,
+        conversationId: currentConvId,
+        reasoningMode,
+        fileContext: fileContextText,
+        signal: controller.signal,
+      });
+
+      const contentType = response.headers.get('content-type') || '';
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        const serverErrorMessage =
+          data?.reply || data?.error || 'Unable to retrieve a response right now. Please try again.';
 
         setMessages((prev) => [
           ...prev,
           {
             id: Date.now() + 1,
             sender: 'bot',
-            text: fallbackText,
+            text: serverErrorMessage,
           },
         ]);
-      } finally {
-        clearTimeout(timeoutId);
-        setIsTyping(false);
+        return;
       }
+
+      if (contentType.includes('text/plain') && response.body) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        const botMessageId = Date.now() + 1;
+        let streamedText = '';
+
+        setIsTyping(false);
+        setStatusMessage('');
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: botMessageId,
+            sender: 'bot',
+            text: '',
+            reasoningMode,
+          },
+        ]);
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          streamedText += decoder.decode(value, { stream: true });
+          setMessages((prev) =>
+            prev.map((m) => (m.id === botMessageId ? { ...m, text: streamedText } : m))
+          );
+        }
+
+        if (!streamedText.trim()) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === botMessageId ? { ...m, text: "I didn't receive a response. Please try again." } : m
+            )
+          );
+        }
+      } else {
+        const data = await response.json().catch(() => null);
+        const botReply = data?.reply || "I didn't receive a response.";
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now() + 1,
+            sender: 'bot',
+            text: botReply,
+            reasoningMode,
+          },
+        ]);
+      }
+    } catch (err) {
+      console.error('Chat API error:', err);
+      const fallbackText =
+        err?.name === 'AbortError'
+          ? 'The response took longer than 90 seconds to generate. Please try asking a more specific question.'
+          : 'Unable to connect to the assistant server. Please check your network connection.';
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now() + 1,
+          sender: 'bot',
+          text: fallbackText,
+        },
+      ]);
+    } finally {
+      clearTimeout(timeoutId);
+      setIsTyping(false);
+      setStatusMessage('');
+      if (user) loadConversations();
     }
   };
 
   return (
-    <div className="chatbot-container">
-      {/* 1. Scrollable messages area taking available vertical space */}
-      <div className="messages-scroll-area">
-        <div className="messages-list">
-          {messages.map((message) => (
-            <ChatMessage
-              key={message.id}
-              message={message}
-              isSpeaking={speakingMessageId === message.id}
-              onToggleSpeak={handleToggleSpeak}
-            />
-          ))}
+    <div className="assistant-layout">
+      {/* 1. Left Persistent / Drawer Sidebar */}
+      <Sidebar
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        conversations={conversations}
+        activeId={activeConversationId}
+        onSelectConversation={handleSelectConversation}
+        onNewChat={handleNewChat}
+        onRenameConversation={handleRenameConversation}
+        onDeleteConversation={handleDeleteConversation}
+        onTogglePin={handleTogglePin}
+        onOpenAuth={() => setAuthModalOpen(true)}
+        onOpenSettings={() => setSettingsModalOpen(true)}
+        onOpenMemory={() => setMemoryModalOpen(true)}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+      />
 
-          {/* Typing indicator bubble */}
-          {isTyping && <TypingIndicator />}
+      {/* 2. Main Chat Area */}
+      <div className="assistant-main-panel">
+        {/* Top Navbar */}
+        <header className="assistant-top-navbar">
+          <div className="navbar-left">
+            <button
+              type="button"
+              className="navbar-hamburger-btn"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              aria-label="Toggle sidebar menu"
+            >
+              ☰
+            </button>
+            <div className="assistant-brand-title">
+              <span className="brand-badge-dot"></span>
+              <h1>AI Assistant</h1>
+            </div>
+          </div>
 
-          {/* Anchor to scroll smoothly to newest message */}
-          <div ref={messagesEndRef} />
+          <div className="navbar-right">
+            <button
+              type="button"
+              className="navbar-action-btn theme-btn"
+              onClick={toggleTheme}
+              title={theme === 'dark' ? 'Switch to Light' : 'Switch to Dark'}
+              aria-label="Toggle dark mode"
+            >
+              {theme === 'dark' ? '☀️' : '🌙'}
+            </button>
+            {user ? (
+              <button
+                type="button"
+                className="navbar-user-btn"
+                onClick={() => setSettingsModalOpen(true)}
+                title="Account Settings"
+                aria-label="Account Settings"
+              >
+                <span className="nav-avatar-circle">{user.name.charAt(0).toUpperCase()}</span>
+                <span className="nav-user-name">{user.name.split(' ')[0]}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="primary-action-btn compact"
+                onClick={() => setAuthModalOpen(true)}
+              >
+                Sign In
+              </button>
+            )}
+          </div>
+        </header>
+
+        {/* Scrollable Message List */}
+        <div className="messages-scroll-area">
+          <div className="messages-list">
+            {/* Empty state suggestions */}
+            {messages.length <= 1 && (
+              <div className="chat-empty-hero">
+                <div className="empty-hero-icon">✨</div>
+                <h2>How can I help you today?</h2>
+                <p>Ask a question, upload a document, enable Deep Thinking, or generate creative images.</p>
+                <div className="suggested-prompts-grid">
+                  {SUGGESTIONS.map((sug, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      className="suggested-prompt-card"
+                      onClick={() => handleSendMessage(sug)}
+                    >
+                      <span>{sug}</span>
+                      <span className="prompt-arrow">↗</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Conversation Messages */}
+            {messages.map((message) => (
+              <ChatMessage
+                key={message.id}
+                message={message}
+                isSpeaking={speakingMessageId === message.id}
+                onToggleSpeak={handleToggleSpeak}
+              />
+            ))}
+
+            {/* Typing Indicator with custom status message */}
+            {isTyping && <TypingIndicator statusText={statusMessage} />}
+
+            <div ref={messagesEndRef} />
+          </div>
+        </div>
+
+        {/* Composer Bar */}
+        <div className="chat-bottom-bar">
+          <ChatInput
+            onSendMessage={handleSendMessage}
+            onGenerateImage={handleGenerateImage}
+            onFileUpload={handleFileUpload}
+            disabled={isTyping}
+            reasoningMode={reasoningMode}
+            onToggleReasoning={() => setReasoningMode(!reasoningMode)}
+          />
         </div>
       </div>
 
-      {/* 2. Fixed/sticky bottom input bar with subtle top border and shadow */}
-      <div className="chat-bottom-bar">
-        <ChatInput onSendMessage={handleSendMessage} disabled={isTyping} />
-      </div>
+      {/* Modals */}
+      <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
+      <MemoryModal isOpen={memoryModalOpen} onClose={() => setMemoryModalOpen(false)} />
+      <SettingsModal
+        isOpen={settingsModalOpen}
+        onClose={() => setSettingsModalOpen(false)}
+        onOpenMemory={() => setMemoryModalOpen(true)}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+      />
     </div>
   );
 }

@@ -2,6 +2,9 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { classifyIntent } from './intent.js';
 import { retrieveKnowledge } from './rag.js';
 import { searchWeb } from './search.js';
+import { extractAuthUser } from './lib/auth.js';
+import { db } from './lib/db.js';
+import { extractMemoriesFromConversation, formatMemoriesForPrompt } from './lib/memory.js';
 
 const MAX_MESSAGE_LENGTH = Number(process.env.MAX_MESSAGE_LENGTH || 4000);
 const MAX_HISTORY_TURNS = Number(process.env.MAX_HISTORY_TURNS || 12);
@@ -376,11 +379,53 @@ export default async function handler(req, res) {
       }
     }
 
-    const { message, history, stream: wantsStream } = body || {};
+    const { message, history, stream: wantsStream, reasoningMode, fileContext, conversationId } = body || {};
     const safeHistory = sanitizeHistory(history);
+    const authUser = extractAuthUser(req);
 
-    const sendReply = (text) => {
+    const sendReply = async (text) => {
       const trimmed = cleanAssistantOutput(text || '');
+
+      // Persist messages if user is authenticated, conversationId exists, and conversation is owned by user
+      if (authUser && conversationId) {
+        try {
+          const ownedConv = await db.getConversation(conversationId, authUser.id);
+          if (ownedConv) {
+            const userMsgId = 'msg_' + Date.now() + '_u';
+            const botMsgId = 'msg_' + (Date.now() + 1) + '_b';
+            await db.createMessage({
+              id: userMsgId,
+              conversation_id: conversationId,
+              role: 'user',
+              content: trimmedMessage,
+            });
+            await db.createMessage({
+              id: botMsgId,
+              conversation_id: conversationId,
+              role: 'model',
+              content: trimmed,
+              model: reasoningMode ? 'deep-thinking' : configuredModel,
+            });
+
+            // Background auto memory extraction
+            extractMemoriesFromConversation(trimmedMessage, trimmed).then(async (extracted) => {
+              for (const item of extracted) {
+                const memId = 'mem_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+                await db.setMemory({
+                  id: memId,
+                  user_id: authUser.id,
+                  memory_key: item.key,
+                  memory_value: item.value,
+                  importance: item.importance || 1,
+                });
+              }
+            }).catch(() => {});
+          }
+        } catch (dbErr) {
+          console.warn('[Message persistence warning]:', dbErr.message);
+        }
+      }
+
       if (wantsStream) {
         if (typeof res.writeHead === 'function') {
           res.writeHead(200, {
@@ -541,8 +586,29 @@ State the weather and temperature clearly, mention humidity, and append "*Source
       }
     }
 
-    // Step B: Structured Context Assembly
+    // Step B: Structured Context Assembly (RAG + Web + User Memory + File Context)
     const contextSections = [];
+
+    // Inject user long-term memories if user is logged in
+    if (authUser) {
+      try {
+        const memories = await db.getUserMemory(authUser.id);
+        const memoryPrompt = formatMemoriesForPrompt(memories);
+        if (memoryPrompt) {
+          contextSections.push(memoryPrompt);
+        }
+      } catch (memErr) {
+        console.warn('[Memory lookup warning]:', memErr.message);
+      }
+    }
+
+    // Inject uploaded file context if present
+    if (fileContext && typeof fileContext === 'string' && fileContext.trim()) {
+      contextSections.push(
+        `[ATTACHED FILE CONTEXT - analyze and reference accurately]:\n${fileContext.trim().slice(0, 15000)}`
+      );
+    }
+
     if (ragContext) {
       contextSections.push(`[VERIFIED KNOWLEDGE BASE CONTEXT]:\n${ragContext}`);
     }
@@ -611,13 +677,12 @@ State the weather and temperature clearly, mention humidity, and append "*Source
     };
 
     // Candidate models to ensure resilience across API tiers
-    const candidateModels = [
-      'gemini-flash-latest',
-      configuredModel,
-      'gemini-2.5-flash',
-      'gemini-2.0-flash',
-      'gemini-1.5-flash',
-    ].filter((m, idx, arr) => m && arr.indexOf(m) === idx);
+    // When reasoningMode is requested, prioritize reasoning-capable models with higher depth
+    const candidateModels = (
+      reasoningMode
+        ? ['gemini-2.5-pro', 'gemini-1.5-pro', configuredModel, 'gemini-flash-latest', 'gemini-2.5-flash']
+        : ['gemini-flash-latest', configuredModel, 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
+    ).filter((m, idx, arr) => m && arr.indexOf(m) === idx);
 
     let replyText = '';
     let lastError = null;

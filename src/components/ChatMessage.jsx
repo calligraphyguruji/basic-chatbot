@@ -4,22 +4,39 @@ import { BotAvatar, UserAvatar } from './Avatars';
 const MarkdownContent = lazy(() => import('./MarkdownContent'));
 
 /**
- * ChatMessage Component
- * Displays user message or bot message with avatar and text-to-speech speaker button.
- *
- * @param {Object} props
- * @param {Object} props.message - { id, sender: 'user' | 'bot', text }
- * @param {boolean} [props.isSpeaking] - Whether this specific message is actively playing audio
- * @param {Function} [props.onToggleSpeak] - Callback to toggle speech playback
+ * Enhanced ChatMessage Component
+ * Supports:
+ * - Text rendering with Markdown + LaTeX
+ * - AI Generated Images with download, enlarge, and prompt info
+ * - Attached files display on user turns
+ * - Deep Thinking reasoning badge indicators
+ * - Text-to-speech speaker controls
  */
 function ChatMessage({ message, isSpeaking = false, onToggleSpeak }) {
-  const isUser = message.sender === 'user';
+  const isUser = message.sender === 'user' || message.role === 'user';
+  const textContent = message.text || message.content || '';
+  const attachments = message.attachments || [];
+  const imageUrl = message.imageUrl || message.metadata?.imageUrl;
+  const isReasoning = message.reasoningMode || message.model === 'deep-thinking';
 
   if (isUser) {
     return (
       <div className="chat-message-row user-row">
-        <div className="message-bubble user-bubble" style={{ whiteSpace: 'pre-wrap' }}>
-          {message.text}
+        <div className="user-message-container">
+          {/* File attachments chips */}
+          {attachments.length > 0 && (
+            <div className="message-attachments-display">
+              {attachments.map((att, i) => (
+                <div key={i} className="msg-file-chip">
+                  <span>📄</span>
+                  <span className="file-name">{att.fileName}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="message-bubble user-bubble" style={{ whiteSpace: 'pre-wrap' }}>
+            {textContent}
+          </div>
         </div>
         <UserAvatar />
       </div>
@@ -31,25 +48,61 @@ function ChatMessage({ message, isSpeaking = false, onToggleSpeak }) {
       <BotAvatar />
       <div className="bot-bubble-wrapper">
         <div className="message-bubble bot-bubble markdown-content">
-          <Suspense fallback={<span>{message.text}</span>}>
-            <MarkdownContent>{message.text}</MarkdownContent>
-          </Suspense>
+          {/* Deep Thinking Mode Badge */}
+          {isReasoning && (
+            <div className="reasoning-thought-badge">
+              <span className="brain-icon">🧠</span>
+              <span>Reasoned with Deep Thinking</span>
+            </div>
+          )}
+
+          {/* AI Generated Image Card */}
+          {imageUrl && (
+            <div className="generated-image-card">
+              <img
+                src={imageUrl}
+                alt={textContent || 'AI Generated Image'}
+                className="ai-generated-image"
+                loading="lazy"
+                onClick={() => window.open(imageUrl, '_blank')}
+              />
+              <div className="image-card-footer">
+                <span className="image-card-caption">{textContent}</span>
+                <a
+                  href={imageUrl}
+                  download={`generated-${message.id || 'image'}.jpg`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="download-image-link"
+                >
+                  📥 Download
+                </a>
+              </div>
+            </div>
+          )}
+
+          {/* Standard Text or Markdown response */}
+          {textContent && !imageUrl && (
+            <Suspense fallback={<span>{textContent}</span>}>
+              <MarkdownContent>{textContent}</MarkdownContent>
+            </Suspense>
+          )}
         </div>
-        {onToggleSpeak && (
+
+        {/* Audio Speaker Playback Control */}
+        {onToggleSpeak && textContent && (
           <button
             type="button"
             className={`speaker-button ${isSpeaking ? 'speaking' : ''}`}
-            onClick={() => onToggleSpeak(message.id, message.text)}
+            onClick={() => onToggleSpeak(message.id, textContent)}
             title={isSpeaking ? 'Stop speaking' : 'Listen to message'}
             aria-label={isSpeaking ? 'Stop speaking' : 'Listen to message'}
           >
             {isSpeaking ? (
-              // Stop / Mute Icon
               <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
                 <rect x="6" y="6" width="12" height="12" rx="2" />
               </svg>
             ) : (
-              // Speaker Icon
               <svg
                 width="15"
                 height="15"

@@ -2,6 +2,12 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import chatHandler from '../api/chat.js';
+import authHandler from '../api/auth.js';
+import conversationsHandler from '../api/conversations.js';
+import memoryHandler from '../api/memory.js';
+import filesHandler from '../api/files.js';
+import imagesHandler from '../api/images.js';
+import { initDb } from '../api/lib/db.js';
 
 dotenv.config();
 dotenv.config({ path: '.env.local', override: true });
@@ -9,7 +15,7 @@ dotenv.config({ path: '.env.local', override: true });
 const app = express();
 const PORT = process.env.PORT || 5001;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-const JSON_BODY_LIMIT = process.env.JSON_BODY_LIMIT || '128kb';
+const JSON_BODY_LIMIT = process.env.JSON_BODY_LIMIT || '20mb'; // Allow up to 20mb for base64 file uploads
 const DEFAULT_CLIENT_ORIGIN = 'https://basic-chatbot-kappa.vercel.app';
 
 function normalizeOrigin(origin) {
@@ -47,9 +53,7 @@ app.use(
         return callback(null, true);
       }
 
-      if (
-        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(normalized)
-      ) {
+      if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(normalized)) {
         return callback(null, true);
       }
 
@@ -71,10 +75,35 @@ app.get(['/', '/health', '/api/health'], (req, res) => {
 
   res.json({
     status: 'ok',
-    message: 'Chatbot Backend API is running',
+    message: 'AI Assistant Backend API is running',
     hasApiKey: hasKey,
     configuredModel: GEMINI_MODEL,
   });
+});
+
+// Auth endpoints
+app.all(['/api/auth', '/api/auth/*'], (req, res) => {
+  return authHandler(req, res);
+});
+
+// Conversations endpoints
+app.all(['/api/conversations', '/api/conversations/*'], (req, res) => {
+  return conversationsHandler(req, res);
+});
+
+// Memory endpoints
+app.all(['/api/memory', '/api/memory/*'], (req, res) => {
+  return memoryHandler(req, res);
+});
+
+// File upload endpoints
+app.all(['/api/files', '/api/files/*'], (req, res) => {
+  return filesHandler(req, res);
+});
+
+// Image generation endpoints
+app.all(['/api/images', '/api/images/*'], (req, res) => {
+  return imagesHandler(req, res);
 });
 
 // Chat endpoint (delegates to the Vercel-native serverless handler in api/chat.js)
@@ -82,7 +111,10 @@ app.all('/api/chat', (req, res) => {
   return chatHandler(req, res);
 });
 
+// Initialize database schema
+initDb().catch((err) => console.error('[DB Init Error]:', err));
+
 app.listen(PORT, () => {
-  console.log(`[Gemini Server] Listening on http://localhost:${PORT}`);
-  console.log(`[Gemini Server] Configured model: ${GEMINI_MODEL}`);
+  console.log(`[AI Assistant Server] Listening on http://localhost:${PORT}`);
+  console.log(`[AI Assistant Server] Configured model: ${GEMINI_MODEL}`);
 });
