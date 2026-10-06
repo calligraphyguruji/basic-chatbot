@@ -124,6 +124,9 @@ export default async function handler(req, res) {
     return res.status(404).json({ error: `Unknown auth action: ${action}` });
   } catch (err) {
     console.error('[Auth API Error]:', err);
-    return res.status(500).json({ error: 'Authentication service error. Please try again.' });
+    return res.status(500).json({
+      error: 'Authentication service error. Please try again.',
+      details: err?.message || String(err),
+    });
   }
 }

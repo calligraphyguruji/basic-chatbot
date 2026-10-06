@@ -5,7 +5,11 @@ import pg from 'pg';
 const { Pool } = pg;
 
 // Local fallback JSON file when DATABASE_URL is not set
-const DATA_DIR = path.resolve(process.cwd(), '.data');
+// In serverless environments (e.g. AWS Lambda / Vercel), only /tmp is writable
+const IS_SERVERLESS = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT);
+const DATA_DIR = IS_SERVERLESS
+  ? path.resolve('/tmp', '.data')
+  : path.resolve(process.cwd(), '.data');
 const LOCAL_DB_FILE = path.join(DATA_DIR, 'db.json');
 
 let pool = null;
@@ -25,18 +29,22 @@ function getPool() {
 }
 
 function initLocalStore() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-  if (!fs.existsSync(LOCAL_DB_FILE)) {
-    const initial = {
-      users: [],
-      conversations: [],
-      messages: [],
-      user_memory: [],
-      uploaded_files: [],
-    };
-    fs.writeFileSync(LOCAL_DB_FILE, JSON.stringify(initial, null, 2), 'utf-8');
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    if (!fs.existsSync(LOCAL_DB_FILE)) {
+      const initial = {
+        users: [],
+        conversations: [],
+        messages: [],
+        user_memory: [],
+        uploaded_files: [],
+      };
+      fs.writeFileSync(LOCAL_DB_FILE, JSON.stringify(initial, null, 2), 'utf-8');
+    }
+  } catch (err) {
+    console.warn('[Local Store Warning]: Could not initialize storage directory:', err.message);
   }
 }
 
@@ -52,7 +60,11 @@ function readLocalStore() {
 
 function writeLocalStore(data) {
   initLocalStore();
-  fs.writeFileSync(LOCAL_DB_FILE, JSON.stringify(data, null, 2), 'utf-8');
+  try {
+    fs.writeFileSync(LOCAL_DB_FILE, JSON.stringify(data, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('[Local Store Warning]: Could not write storage file:', err.message);
+  }
 }
 
 /**
@@ -149,8 +161,9 @@ export const db = {
   },
 
   async findUserById(id) {
-    if (pool) {
-      const res = await pool.query('SELECT id, name, email, avatar_url, created_at, updated_at FROM users WHERE id = $1', [id]);
+    const activePool = getPool();
+    if (activePool) {
+      const res = await activePool.query('SELECT id, name, email, avatar_url, created_at, updated_at FROM users WHERE id = $1', [id]);
       return res.rows[0] || null;
     }
     const store = readLocalStore();
@@ -162,8 +175,9 @@ export const db = {
   async createUser({ id, name, email, password_hash, avatar_url = null }) {
     const cleanEmail = email.toLowerCase().trim();
     const now = new Date().toISOString();
-    if (pool) {
-      const res = await pool.query(
+    const activePool = getPool();
+    if (activePool) {
+      const res = await activePool.query(
         `INSERT INTO users (id, name, email, password_hash, avatar_url, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, name, email, avatar_url, created_at`,
         [id, name, cleanEmail, password_hash, avatar_url, now, now]
@@ -179,7 +193,8 @@ export const db = {
 
   async updateUser(id, { name, avatar_url, password_hash }) {
     const now = new Date().toISOString();
-    if (pool) {
+    const activePool = getPool();
+    if (activePool) {
       const fields = [];
       const values = [];
       let idx = 1;
@@ -188,7 +203,7 @@ export const db = {
       if (password_hash !== undefined) { fields.push(`password_hash = $${idx++}`); values.push(password_hash); }
       fields.push(`updated_at = $${idx++}`); values.push(now);
       values.push(id);
-      const res = await pool.query(
+      const res = await activePool.query(
         `UPDATE users SET ${fields.join(', ')} WHERE id = $${idx} RETURNING id, name, email, avatar_url, updated_at`,
         values
       );
@@ -206,8 +221,9 @@ export const db = {
   },
 
   async deleteUser(id) {
-    if (pool) {
-      await pool.query('DELETE FROM users WHERE id = $1', [id]);
+    const activePool = getPool();
+    if (activePool) {
+      await activePool.query('DELETE FROM users WHERE id = $1', [id]);
       return true;
     }
     const store = readLocalStore();
@@ -221,7 +237,8 @@ export const db = {
 
   // CONVERSATIONS
   async getConversations(userId, { search = '', includeArchived = false } = {}) {
-    if (pool) {
+    const activePool = getPool();
+    if (activePool) {
       let query = `
         SELECT c.*, 
           (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) as message_count
@@ -239,7 +256,7 @@ export const db = {
         ))`;
       }
       query += ` ORDER BY c.pinned DESC NULLS LAST, c.updated_at DESC`;
-      const res = await pool.query(query, params);
+      const res = await activePool.query(query, params);
       return res.rows;
     }
 
@@ -266,8 +283,9 @@ export const db = {
   },
 
   async getConversation(id, userId) {
-    if (pool) {
-      const res = await pool.query('SELECT * FROM conversations WHERE id = $1 AND user_id = $2', [id, userId]);
+    const activePool = getPool();
+    if (activePool) {
+      const res = await activePool.query('SELECT * FROM conversations WHERE id = $1 AND user_id = $2', [id, userId]);
       return res.rows[0] || null;
     }
     const store = readLocalStore();
@@ -276,8 +294,9 @@ export const db = {
 
   async createConversation({ id, user_id, title = 'New Chat' }) {
     const now = new Date().toISOString();
-    if (pool) {
-      const res = await pool.query(
+    const activePool = getPool();
+    if (activePool) {
+      const res = await activePool.query(
         `INSERT INTO conversations (id, user_id, title, pinned, archived, created_at, updated_at)
          VALUES ($1, $2, $3, FALSE, FALSE, $4, $5) RETURNING *`,
         [id, user_id, title, now, now]
@@ -293,7 +312,8 @@ export const db = {
 
   async updateConversation(id, userId, { title, pinned, archived }) {
     const now = new Date().toISOString();
-    if (pool) {
+    const activePool = getPool();
+    if (activePool) {
       const fields = [];
       const values = [];
       let idx = 1;
@@ -302,7 +322,7 @@ export const db = {
       if (archived !== undefined) { fields.push(`archived = $${idx++}`); values.push(archived); }
       fields.push(`updated_at = $${idx++}`); values.push(now);
       values.push(id, userId);
-      const res = await pool.query(
+      const res = await activePool.query(
         `UPDATE conversations SET ${fields.join(', ')} WHERE id = $${idx++} AND user_id = $${idx} RETURNING *`,
         values
       );
@@ -320,8 +340,9 @@ export const db = {
   },
 
   async deleteConversation(id, userId) {
-    if (pool) {
-      await pool.query('DELETE FROM conversations WHERE id = $1 AND user_id = $2', [id, userId]);
+    const activePool = getPool();
+    if (activePool) {
+      await activePool.query('DELETE FROM conversations WHERE id = $1 AND user_id = $2', [id, userId]);
       return true;
     }
     const store = readLocalStore();
@@ -333,8 +354,9 @@ export const db = {
 
   // MESSAGES
   async getMessages(conversationId) {
-    if (pool) {
-      const res = await pool.query(
+    const activePool = getPool();
+    if (activePool) {
+      const res = await activePool.query(
         'SELECT * FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC',
         [conversationId]
       );
@@ -346,13 +368,14 @@ export const db = {
 
   async createMessage({ id, conversation_id, role, content, model = null, metadata = null }) {
     const now = new Date().toISOString();
-    if (pool) {
-      const res = await pool.query(
+    const activePool = getPool();
+    if (activePool) {
+      const res = await activePool.query(
         `INSERT INTO messages (id, conversation_id, role, content, model, metadata, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
         [id, conversation_id, role, content, model, metadata ? JSON.stringify(metadata) : null, now]
       );
-      await pool.query('UPDATE conversations SET updated_at = $1 WHERE id = $2', [now, conversation_id]);
+      await activePool.query('UPDATE conversations SET updated_at = $1 WHERE id = $2', [now, conversation_id]);
       return res.rows[0];
     }
     const store = readLocalStore();
@@ -366,8 +389,9 @@ export const db = {
 
   // USER MEMORY
   async getUserMemory(userId) {
-    if (pool) {
-      const res = await pool.query(
+    const activePool = getPool();
+    if (activePool) {
+      const res = await activePool.query(
         'SELECT * FROM user_memory WHERE user_id = $1 ORDER BY importance DESC, updated_at DESC',
         [userId]
       );
@@ -379,8 +403,9 @@ export const db = {
 
   async setMemory({ id, user_id, memory_key, memory_value, importance = 1 }) {
     const now = new Date().toISOString();
-    if (pool) {
-      const res = await pool.query(
+    const activePool = getPool();
+    if (activePool) {
+      const res = await activePool.query(
         `INSERT INTO user_memory (id, user_id, memory_key, memory_value, importance, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING *`,
@@ -404,8 +429,9 @@ export const db = {
   },
 
   async deleteMemory(id, userId) {
-    if (pool) {
-      await pool.query('DELETE FROM user_memory WHERE id = $1 AND user_id = $2', [id, userId]);
+    const activePool = getPool();
+    if (activePool) {
+      await activePool.query('DELETE FROM user_memory WHERE id = $1 AND user_id = $2', [id, userId]);
       return true;
     }
     const store = readLocalStore();
@@ -415,8 +441,9 @@ export const db = {
   },
 
   async clearUserMemory(userId) {
-    if (pool) {
-      await pool.query('DELETE FROM user_memory WHERE user_id = $1', [userId]);
+    const activePool = getPool();
+    if (activePool) {
+      await activePool.query('DELETE FROM user_memory WHERE user_id = $1', [userId]);
       return true;
     }
     const store = readLocalStore();
@@ -428,8 +455,9 @@ export const db = {
   // UPLOADED FILES
   async createUploadedFile({ id, user_id, conversation_id = null, file_name, file_type, file_size, storage_url, extracted_text = '' }) {
     const now = new Date().toISOString();
-    if (pool) {
-      const res = await pool.query(
+    const activePool = getPool();
+    if (activePool) {
+      const res = await activePool.query(
         `INSERT INTO uploaded_files (id, user_id, conversation_id, file_name, file_type, file_size, storage_url, extracted_text, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
         [id, user_id, conversation_id, file_name, file_type, file_size, storage_url, extracted_text, now]
@@ -444,8 +472,9 @@ export const db = {
   },
 
   async getConversationFiles(conversationId, userId) {
-    if (pool) {
-      const res = await pool.query(
+    const activePool = getPool();
+    if (activePool) {
+      const res = await activePool.query(
         'SELECT * FROM uploaded_files WHERE conversation_id = $1 AND user_id = $2 ORDER BY created_at ASC',
         [conversationId, userId]
       );
@@ -456,8 +485,9 @@ export const db = {
   },
 
   async deleteFile(id, userId) {
-    if (pool) {
-      await pool.query('DELETE FROM uploaded_files WHERE id = $1 AND user_id = $2', [id, userId]);
+    const activePool = getPool();
+    if (activePool) {
+      await activePool.query('DELETE FROM uploaded_files WHERE id = $1 AND user_id = $2', [id, userId]);
       return true;
     }
     const store = readLocalStore();
