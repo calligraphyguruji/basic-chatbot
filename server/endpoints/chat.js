@@ -476,11 +476,16 @@ export default async function handler(req, res) {
       apiKey = apiKey.trim().replace(/^["']|["']$/g, '');
     }
     if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY' || apiKey === 'your_api_key_here') {
-      console.error('[Gemini Server Error]: GEMINI_API_KEY is not configured in Vercel environment variables.');
+      console.error('[Gemini Server Error]: GEMINI_API_KEY is not configured in server environment variables.');
       return res.status(500).json({
-        error: 'Gemini API key is not configured.',
-        details: 'GEMINI_API_KEY is missing in server environment variables.',
-        reply: 'Gemini API key is not configured. Please add GEMINI_API_KEY in Vercel Project Settings.',
+        success: false,
+        error: {
+          code: 'SERVICE_UNAVAILABLE',
+          message: 'The AI assistant is temporarily unavailable. Please try again later.',
+          retryable: false,
+          details: process.env.NODE_ENV !== 'production' ? 'GEMINI_API_KEY is not configured.' : undefined,
+        },
+        reply: 'The AI assistant is temporarily unavailable. Please try again later.',
       });
     }
 
@@ -874,7 +879,7 @@ State the weather and temperature clearly, mention humidity, and append "*Source
     // 7. Verify response extraction
     if (!replyText) {
       if (lastError) throw lastError;
-      return sendReply('The AI model completed the request without generating text. Please try phrasing your prompt differently.');
+      return sendReply('I could not generate an answer for this prompt. Please try rephrasing or asking something else.');
     }
 
     // 8. Return response
@@ -890,11 +895,12 @@ State the weather and temperature clearly, mention humidity, and append "*Source
 
     if (errorMsg.includes('API_KEY_INVALID') || errorMsg.includes('API key not valid')) {
       errorCode = 'INVALID_API_KEY';
-      friendlyMessage = 'Gemini API key is invalid or expired. Please check your GEMINI_API_KEY configuration.';
+      // Server log keeps technical detail, but user sees a clean non-technical message
+      friendlyMessage = 'AI service is temporarily unavailable. Please try again in a moment.';
       isRetryable = false;
     } else if (errorMsg.includes('RESOURCE_EXHAUSTED') || errorMsg.includes('quota') || status === 429) {
       errorCode = 'RATE_LIMIT_EXCEEDED';
-      friendlyMessage = 'AI service quota or rate limit reached. Please wait a few moments and try again.';
+      friendlyMessage = 'The AI service is experiencing high traffic right now. Please wait a moment and try again.';
       isRetryable = true;
     } else if (errorMsg.includes('fetch failed') || errorMsg.includes('ECONNREFUSED') || errorMsg.includes('ETIMEDOUT')) {
       errorCode = 'NETWORK_TIMEOUT';

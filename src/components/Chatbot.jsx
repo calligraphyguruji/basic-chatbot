@@ -390,13 +390,15 @@ function Chatbot() {
         if (!streamedText.trim()) {
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === botMessageId ? { ...m, text: "I didn't receive a response. Please try again." } : m
+              m.id === botMessageId
+                ? { ...m, text: 'I could not generate an answer for this prompt. Please try asking again.' }
+                : m
             )
           );
         }
       } else {
         const data = await response.json().catch(() => null);
-        const botReply = data?.reply || "I didn't receive a response.";
+        const botReply = data?.reply || data?.error?.message || 'I could not generate an answer for this prompt. Please try asking again.';
         setMessages((prev) => [
           ...prev,
           {
