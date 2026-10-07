@@ -61,7 +61,13 @@ Created and owned by **Mr. Aman Mishra**.
 - Generates high-resolution images with prompt attribution.
 - Supports instant downloading and high-resolution lightbox preview.
 
-### 7. Core Chatbot Capabilities Preserved
+### 7. Responsive Mobile-First Chat Architecture
+- **Natural Left-Aligned AI Flow**: AI responses flow naturally beside and below the left-aligned avatar without artificial horizontal centering.
+- **Maximum Viewport Utilization**: Flex layout with `flex: 1` and `min-width: 0` ensures responses expand naturally across available mobile screen widths (320px–480px+).
+- **Horizontal Overflow Protection**: Safely wraps long text, break-anywhere words, inline and block math/LaTeX, with internal horizontal scrolling dedicated to code blocks and tables.
+- **Desktop Parity**: Preserves existing desktop spacing, typography, and clean Bodhisakha visual aesthetic.
+
+### 8. Core Chatbot Capabilities Preserved
 - Real-time live weather lookup via `wttr.in`.
 - Voice input with speech-to-text recognition and text-to-speech voice playback.
 - Educational intent detection (formula sheets, MCQs, study plans).

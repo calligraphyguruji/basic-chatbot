@@ -588,13 +588,101 @@
 
 .bot-bubble-wrapper {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
+  flex: 1;
+  min-width: 0;
   max-width: 85%;
 }
 
 .bot-bubble-wrapper .bot-bubble {
+  flex: 1;
+  min-width: 0;
   max-width: 100%;
+}
+
+/* Markdown typography and container overflow rules */
+.markdown-content {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.markdown-content pre {
+  margin: 10px 0;
+  padding: 12px 14px;
+  background-color: var(--panel-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.markdown-content pre code {
+  background: transparent;
+  padding: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13.5px;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.markdown-content :not(pre) > code {
+  background-color: var(--panel-bg);
+  border: 1px solid var(--card-border);
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.markdown-content table {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 12px 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.markdown-content th,
+.markdown-content td {
+  padding: 8px 12px;
+  border: 1px solid var(--card-border);
+  text-align: left;
+}
+
+.markdown-content th {
+  background-color: var(--panel-bg);
+  font-weight: 600;
+}
+
+.markdown-content p {
+  margin-bottom: 8px;
+}
+
+.markdown-content p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.markdown-content li {
+  margin-bottom: 4px;
+}
+
+.markdown-content blockquote {
+  margin: 10px 0;
+  padding: 6px 14px;
+  border-left: 3px solid var(--primary-saffron);
+  background-color: rgba(255, 153, 51, 0.08);
+  border-radius: 0 6px 6px 0;
 }
 
 /* Reasoning Thought Badge */
@@ -1229,4 +1317,64 @@
   .chat-empty-hero h2 {
     font-size: 21px;
   }
+
+  /* Mobile chat message layout: full width flow with no narrow column traps */
+  .chat-message-row {
+    gap: 10px;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .bot-bubble-wrapper {
+    max-width: 100%;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .bot-bubble-wrapper .bot-bubble {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .user-message-container {
+    max-width: 88%;
+  }
 }
+
+@media (max-width: 480px) {
+  .messages-scroll-area {
+    padding: 12px 8px 6px;
+  }
+
+  .chat-message-row {
+    gap: 8px;
+  }
+
+  .avatar {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+  }
+
+  .avatar svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .message-bubble {
+    padding: 10px 14px;
+    font-size: 14.5px;
+    border-radius: 10px;
+  }
+
+  .speaker-button {
+    width: 26px;
+    height: 26px;
+    min-width: 26px;
+  }
+
+  .user-message-container {
+    max-width: 90%;
+  }
+}
+
