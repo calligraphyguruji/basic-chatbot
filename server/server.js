@@ -14,7 +14,7 @@ dotenv.config({ path: '.env.local', override: true });
 
 const app = express();
 const PORT = process.env.PORT || 5001;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const LLM_MODEL = process.env.OMNIROUTE_MODEL || process.env.LLM_MODEL || 'auto/best-chat';
 const JSON_BODY_LIMIT = process.env.JSON_BODY_LIMIT || '20mb'; // Allow up to 20mb for base64 file uploads
 const DEFAULT_CLIENT_ORIGIN = 'https://basic-chatbot-kappa.vercel.app';
 
@@ -68,16 +68,18 @@ app.use(express.json({ limit: JSON_BODY_LIMIT }));
 // Health check endpoints (supports /, /health, and /api/health)
 app.get(['/', '/health', '/api/health'], (req, res) => {
   const hasKey = Boolean(
-    process.env.GEMINI_API_KEY &&
-      process.env.GEMINI_API_KEY !== 'your_api_key_here' &&
-      process.env.GEMINI_API_KEY !== 'YOUR_GEMINI_API_KEY'
+    (process.env.OMNIROUTE_API_KEY && process.env.OMNIROUTE_API_KEY !== 'your_api_key_here') ||
+      (process.env.GEMINI_API_KEY &&
+        process.env.GEMINI_API_KEY !== 'your_api_key_here' &&
+        process.env.GEMINI_API_KEY !== 'YOUR_GEMINI_API_KEY')
   );
 
   res.json({
     status: 'ok',
     message: 'AI Assistant Backend API is running',
     hasApiKey: hasKey,
-    configuredModel: GEMINI_MODEL,
+    configuredModel: LLM_MODEL,
+    gateway: process.env.OMNIROUTE_URL || 'http://localhost:20128',
   });
 });
 
@@ -116,5 +118,5 @@ initDb().catch((err) => console.error('[DB Init Error]:', err));
 
 app.listen(PORT, () => {
   console.log(`[AI Assistant Server] Listening on http://localhost:${PORT}`);
-  console.log(`[AI Assistant Server] Configured model: ${GEMINI_MODEL}`);
+  console.log(`[AI Assistant Server] Configured model: ${LLM_MODEL}`);
 });

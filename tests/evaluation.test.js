@@ -72,17 +72,17 @@ async function runTests() {
   });
   assert(res11Status === 400 && res11Data.error === 'Message is required', 'TEST 11: Empty request rejected with HTTP 400');
 
-  // TEST 12: Simulated Gemini API failure / missing key handling
+  // TEST 12: Simulated OmniRoute API failure / missing key handling
   let res12Status = 0;
   let res12Data = null;
-  const origKey = process.env.GEMINI_API_KEY;
-  process.env.GEMINI_API_KEY = 'invalid_mock_key';
+  const origOmniKey = process.env.OMNIROUTE_API_KEY;
+  process.env.OMNIROUTE_API_KEY = 'invalid_mock_key';
   await handler({ method: 'POST', body: { message: 'Tell me about entropy' } }, {
     setHeader: () => {},
     status: (s) => { res12Status = s; return { json: (d) => { res12Data = d; } }; }
   });
   assert(res12Status >= 400 && res12Data.reply && !res12Data.reply.startsWith("Sorry, I can't help"), 'TEST 12: Invalid API key produces diagnostic error');
-  process.env.GEMINI_API_KEY = origKey;
+  process.env.OMNIROUTE_API_KEY = origOmniKey;
 
   // TEST 13: Simulated RAG failure (graceful empty/zero results)
   const t13 = retrieveKnowledge('xyz completely unrelated gibberish 999');
@@ -103,8 +103,6 @@ async function runTests() {
   let streamHeaders = null;
   let streamChunks = [];
   let streamEnded = false;
-  const prevEnvKey = process.env.GEMINI_API_KEY;
-  process.env.GEMINI_API_KEY = 'mock_key_for_test';
   await handler(
     {
       method: 'POST',
@@ -124,7 +122,6 @@ async function runTests() {
       status: () => ({ json: () => {} }),
     }
   );
-  process.env.GEMINI_API_KEY = prevEnvKey;
   assert(
     streamHeaders &&
       streamHeaders.status === 200 &&

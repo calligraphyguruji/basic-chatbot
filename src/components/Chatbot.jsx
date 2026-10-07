@@ -210,57 +210,6 @@ function Chatbot() {
     });
   };
 
-  // Image Generation handler
-  const handleGenerateImage = async (prompt) => {
-    if (!user) {
-      setAuthModalOpen(true);
-      return;
-    }
-    stopSpeech();
-    setSpeakingMessageId(null);
-
-    const userMessage = {
-      id: Date.now(),
-      sender: 'user',
-      text: `Generate an image: "${prompt}"`,
-    };
-    setMessages((prev) => [...prev, userMessage]);
-    setIsTyping(true);
-    setStatusMessage('Creating image with AI...');
-
-    try {
-      let convId = activeConversationId;
-      if (!convId) {
-        const title = `Image: ${prompt.slice(0, 30)}`;
-        const newConv = await AIService.createConversation(title);
-        convId = newConv.id;
-        setActiveConversationId(convId);
-        loadConversations();
-      }
-
-      const res = await AIService.generateImage(prompt);
-      const botMessage = {
-        id: Date.now() + 1,
-        sender: 'bot',
-        text: `Here is your generated image: "${prompt}"`,
-        imageUrl: res.imageUrl,
-      };
-      setMessages((prev) => [...prev, botMessage]);
-    } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now() + 1,
-          sender: 'bot',
-          text: `Image generation failed: ${err.message || 'Please try again later.'}`,
-        },
-      ]);
-    } finally {
-      setIsTyping(false);
-      setStatusMessage('');
-    }
-  };
-
   // Send Message handler
   const handleSendMessage = async (userText, attachments = []) => {
     stopSpeech();
@@ -551,7 +500,6 @@ function Chatbot() {
         <div className="chat-bottom-bar">
           <ChatInput
             onSendMessage={handleSendMessage}
-            onGenerateImage={handleGenerateImage}
             onFileUpload={handleFileUpload}
             disabled={isTyping}
             reasoningMode={reasoningMode}

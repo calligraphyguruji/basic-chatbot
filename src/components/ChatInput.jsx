@@ -9,13 +9,11 @@ import { isSpeechRecognitionSupported, initSpeechRecognizer } from '../utils/spe
  * - File attachment button (PDF, DOCX, TXT, CSV, JSON, PNG, JPG, WEBP)
  * - File chips with removal
  * - Deep Thinking toggle (🧠 Thinking)
- * - Image Generation mode toggle (✨ Image)
  * - Microphone voice input (speech-to-text)
  * - High-speed Saffron Send button
  */
 function ChatInput({
   onSendMessage,
-  onGenerateImage,
   onFileUpload,
   disabled = false,
   reasoningMode = false,
@@ -23,7 +21,6 @@ function ChatInput({
 }) {
   const [inputText, setInputText] = useState('');
   const [isListening, setIsListening] = useState(false);
-  const [isImageMode, setIsImageMode] = useState(false);
   const [attachments, setAttachments] = useState([]);
   const [uploading, setUploading] = useState(false);
 
@@ -146,13 +143,6 @@ function ChatInput({
       return;
     }
 
-    if (isImageMode) {
-      onGenerateImage(trimmed);
-      setInputText('');
-      setIsImageMode(false);
-      return;
-    }
-
     onSendMessage(trimmed, attachments);
     setInputText('');
     setAttachments([]);
@@ -193,9 +183,7 @@ function ChatInput({
           rows={1}
           className="chat-input"
           placeholder={
-            isImageMode
-              ? 'Describe the image you want to create (e.g. futuristic cyberpunk city at dusk)...'
-              : isListening
+            isListening
               ? 'Listening... Speak into your microphone'
               : 'Ask anything, upload documents, or press Shift+Enter for newlines...'
           }
@@ -239,25 +227,12 @@ function ChatInput({
               type="button"
               className={`toolbar-btn reasoning-toggle-btn ${reasoningMode ? 'active' : ''}`}
               onClick={onToggleReasoning}
-              disabled={disabled || isImageMode}
+              disabled={disabled}
               title={reasoningMode ? 'Deep Thinking is ON' : 'Toggle Deep Thinking mode'}
               aria-label="Deep Thinking mode"
             >
               <span className="toggle-icon">🧠</span>
               <span className="btn-label-desktop">Deep Thinking</span>
-            </button>
-
-            {/* Image Mode Toggle */}
-            <button
-              type="button"
-              className={`toolbar-btn image-toggle-btn ${isImageMode ? 'active' : ''}`}
-              onClick={() => setIsImageMode(!isImageMode)}
-              disabled={disabled}
-              title={isImageMode ? 'Switch to Chat mode' : 'Generate AI Image'}
-              aria-label="Generate AI Image"
-            >
-              <span className="toggle-icon">✨</span>
-              <span className="btn-label-desktop">Image</span>
             </button>
           </div>
 
@@ -283,17 +258,13 @@ function ChatInput({
               type="submit"
               className="send-button"
               disabled={disabled || uploading || (!inputText.trim() && attachments.length === 0)}
-              title={isImageMode ? 'Generate Image' : 'Send message'}
+              title="Send message"
               aria-label="Send message"
             >
-              {isImageMode ? (
-                'Generate'
-              ) : (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="12" y1="19" x2="12" y2="5" />
-                  <polyline points="5 12 12 5 19 12" />
-                </svg>
-              )}
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="19" x2="12" y2="5" />
+                <polyline points="5 12 12 5 19 12" />
+              </svg>
             </button>
           </div>
         </div>

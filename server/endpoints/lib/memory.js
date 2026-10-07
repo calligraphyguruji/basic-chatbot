@@ -1,21 +1,9 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
-
-function getGenAI() {
-  let apiKey = process.env.GEMINI_API_KEY;
-  if (apiKey) apiKey = apiKey.trim().replace(/^["']|["']$/g, '');
-  if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY' || apiKey === 'your_api_key_here') {
-    return null;
-  }
-  return new GoogleGenerativeAI(apiKey);
-}
+import { sendChatCompletion } from './llm.js';
 
 /**
  * Extracts key personal facts or preferences from recent dialogue
  */
 export async function extractMemoriesFromConversation(userMessage, botResponse) {
-  const genAI = getGenAI();
-  if (!genAI) return [];
-
   // Quick heuristic filter to save LLM tokens if user message lacks self-referential words
   const triggerWords = /\b(my|i am|i'm|i live|i prefer|i like|i love|i hate|i learn|i'm learning|call me|i work as|my name is|mera naam|mujhe|seekh raha)\b/i;
   if (!triggerWords.test(userMessage)) {
@@ -38,12 +26,18 @@ If nothing long-term should be remembered, return: []
 Do not wrap in markdown quotes. Valid JSON only.`;
 
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    const res = await model.generateContent(prompt);
-    const text = (await res.response).text().trim().replace(/^```json|```$/gi, '').trim();
-    const parsed = JSON.parse(text);
+    const text = await sendChatCompletion({
+      messages: [
+        { role: 'system', content: 'You extract user memory in valid JSON only.' },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.1,
+      maxTokens: 256,
+    });
+    const cleaned = text.trim().replace(/^```json|```$/gi, '').trim();
+    const parsed = JSON.parse(cleaned);
     if (Array.isArray(parsed)) {
-      return parsed.filter(m => m.key && m.value).slice(0, 5);
+      return parsed.filter((m) => m.key && m.value).slice(0, 5);
     }
   } catch (err) {
     console.warn('[Memory extraction warning]:', err.message);
