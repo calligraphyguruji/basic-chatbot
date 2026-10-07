@@ -1,6 +1,6 @@
 # Bodhisakha (बोधिसखा) — Production AI Assistant
 
-A full-stack, production-grade conversational AI assistant built with **React 19**, **Vite**, **Express**, and **OmniRoute Gateway**. Designed with authentic Sanskrit identity (*Bodhisakha* — "Companion of Wisdom"), a warm **Saffron (`#FF9933`)** aesthetic, multi-turn dialogue persistence, multi-user authentication, long-term personal memory, document understanding, deep reasoning, and optimized for **Vercel Serverless Function** deployment.
+A full-stack, production-grade conversational AI assistant built with **React 19**, **Vite**, **Express**, and **Google Gemini AI**. Designed with authentic Sanskrit identity (*Bodhisakha* — "Companion of Wisdom"), a warm **Saffron (`#FF9933`)** aesthetic, multi-turn dialogue persistence, multi-user authentication, long-term personal memory, document understanding, deep reasoning, and optimized for **Vercel Serverless Function** deployment.
 
 Created and owned by **Mr. Aman Mishra**.
 
@@ -15,11 +15,10 @@ Created and owned by **Mr. Aman Mishra**.
 
 ## 🚀 Key Features
 
-### 1. OmniRoute Unified Model Gateway & OpenAI-Compatible Streaming
-- Centralized LLM gateway routing chat requests to configured model providers through OmniRoute.
-- Full streaming response preservation with incremental chunk delivery over chunked text/plain SSE.
-- Server-side credentials isolation: `OMNIROUTE_API_KEY` is strictly held on the server and never exposed in client bundles.
-- Automatic multi-tier model fallback: cascades gracefully across configured models (`auto/best-chat`, `auto/best-reasoning`, `auto/pro-chat`, `auto/fast`).
+### 1. Direct Server-Side Google Gemini AI & Real-Time Streaming
+- Direct connection to Google Gemini API using `@google/generative-ai` with chunked stream response delivery.
+- Server-side credentials isolation: `GEMINI_API_KEY` is strictly held on the server/backend and never exposed in client bundles.
+- Resilient model fallback: cascades across Gemini models (`gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-flash-latest`) with transient error retry.
 
 ### 2. Persistent Multi-User Architecture & Authentication
 - Secure **Register / Sign In** modal with client and server validation.
@@ -77,7 +76,7 @@ Created and owned by **Mr. Aman Mishra**.
 - **Frontend**: React 19, Vite 8, React Markdown, Rehype-KaTeX, Remark-GFM, Remark-Math.
 - **Backend / Serverless**: Express 5, Vercel Serverless Functions (`/api/*`), Node.js.
 - **Database / Storage**: PostgreSQL (`pg`) with automatic zero-overhead local JSON storage fallback (`.data/db.json`) when `DATABASE_URL` is omitted.
-- **AI Gateway & Models**: OmniRoute (`/v1/chat/completions` with streaming SSE, OpenAI-compatible schema, multi-model fallback across `auto/best-chat` and `auto/best-reasoning`).
+- **AI Models**: Google Gemini (`@google/generative-ai`, `gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-flash-latest`).
 
 ---
 

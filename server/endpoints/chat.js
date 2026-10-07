@@ -1,15 +1,10 @@
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { classifyIntent } from './intent.js';
 import { retrieveKnowledge } from './rag.js';
 import { searchWeb } from './search.js';
 import { extractAuthUser } from './lib/auth.js';
 import { db } from './lib/db.js';
 import { extractMemoriesFromConversation, formatMemoriesForPrompt } from './lib/memory.js';
-import {
-  getLLMConfig,
-  cleanAssistantOutput,
-  sendChatCompletion,
-  streamChatCompletion,
-} from './lib/llm.js';
 
 const MAX_MESSAGE_LENGTH = Number(process.env.MAX_MESSAGE_LENGTH || 4000);
 const MAX_HISTORY_TURNS = Number(process.env.MAX_HISTORY_TURNS || 12);
@@ -27,7 +22,10 @@ function getConfiguredOrigins() {
     if (normalized && normalized !== '*') origins.add(normalized);
   };
 
-  (process.env.CLIENT_ORIGIN || '').split(',').forEach(addOrigin);
+  (process.env.CLIENT_ORIGIN || '')
+    .split(',')
+    .forEach(addOrigin);
+
   addOrigin(DEFAULT_CLIENT_ORIGIN);
   addOrigin(process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '');
   addOrigin(
@@ -48,7 +46,9 @@ function getAllowedOrigin(requestOrigin) {
     return normalizedRequestOrigin;
   }
 
-  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(normalizedRequestOrigin)) {
+  if (
+    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(normalizedRequestOrigin)
+  ) {
     return normalizedRequestOrigin;
   }
 
@@ -74,12 +74,11 @@ function sanitizeHistory(history) {
   if (!Array.isArray(history)) return [];
 
   return history
-    .filter(
-      (item) =>
-        item &&
-        (item.sender === 'user' || item.sender === 'bot') &&
-        typeof item.text === 'string' &&
-        item.text.trim()
+    .filter((item) =>
+      item &&
+      (item.sender === 'user' || item.sender === 'bot') &&
+      typeof item.text === 'string' &&
+      item.text.trim()
     )
     .slice(-MAX_HISTORY_TURNS)
     .map((item) => ({
@@ -113,6 +112,80 @@ Format all mathematical and chemical formulas using LaTeX notation ($...$ for in
 Respond directly to the user's latest request with the final polished answer.`;
 
 /**
+ * Sanitizes assistant responses to eliminate any leaked internal thought or drafting tokens
+ */
+function cleanAssistantOutput(rawText) {
+  if (!rawText || typeof rawText !== 'string') return '';
+  let cleaned = rawText.trim();
+
+  // Strip xml thinking tags: <thought>...</thought> or <thinking>...</thinking>
+  cleaned = cleaned.replace(/<(thought|thinking|internal)>[\s\S]*?<\/\1>/gi, '').trim();
+
+  // Strip scratchpad or drafting tokens if leaked in response
+  if (/(\bDraft \d+:|\bDrafting response:|\bCurrent Identity Rules:|\bSelf-Correction:|\bPrevious turn:|\bUser asks:|\bDirectly address the question)/i.test(cleaned)) {
+    const lines = cleaned.split('\n');
+    const filteredLines = [];
+    let skipping = false;
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (
+        /^\*?\s*(Question:|Context:|Directly address|Draft \d+:|Draft:|Refinement:|Self-Correction:|Check:|Current Identity Rules:|User asks:)/i.test(trimmed)
+      ) {
+        skipping = true;
+        continue;
+      }
+      if (skipping && /^[A-Z][a-zA-Z0-9\s"']{10,}/.test(trimmed) && !trimmed.startsWith('*')) {
+        skipping = false;
+      }
+      if (!skipping) {
+        filteredLines.push(line);
+      }
+    }
+    const candidateCleaned = filteredLines.join('\n').trim();
+    if (candidateCleaned.length > 5) {
+      cleaned = candidateCleaned;
+    }
+  }
+
+  // Strip leading headers like "Answer:" or "Response:"
+  cleaned = cleaned.replace(/^(?:\*\*|\*|#+\s*)?(?:Answer|Response|Assistant|Final Answer):\s*/i, '').trim();
+
+  return cleaned;
+}
+
+/**
+ * Safely extracts text parts from Gemini response, filtering out thinking tokens
+ */
+function extractTextFromResponse(response) {
+  if (!response) return '';
+  let extracted = '';
+
+  try {
+    const candidate = response.candidates?.[0];
+    if (candidate?.content?.parts && Array.isArray(candidate.content.parts)) {
+      const parts = candidate.content.parts
+        .filter((p) => !p.thought && p.text)
+        .map((p) => p.text);
+      if (parts.length > 0) {
+        extracted = parts.join('');
+      }
+    }
+  } catch (err) {
+    console.warn('Could not extract candidate parts:', err);
+  }
+
+  if (!extracted && typeof response.text === 'function') {
+    try {
+      extracted = response.text();
+    } catch (e) {
+      console.warn('response.text() call failed:', e);
+    }
+  }
+
+  return cleanAssistantOutput(extracted);
+}
+
+/**
  * Detects if a message is a weather query
  */
 function isWeatherQuery(text) {
@@ -127,7 +200,7 @@ function isWeatherQuery(text) {
 function extractWeatherLocation(message, history) {
   const query = (message || '').trim();
 
-  // Check if previous bot message was asking for city/zip code
+  // Check if previous bot message was asking for city/zip code (English, Hinglish or Hindi Devanagari)
   const isFollowUpToLocationPrompt =
     Array.isArray(history) &&
     history.length > 0 &&
@@ -145,7 +218,7 @@ function extractWeatherLocation(message, history) {
     return query.replace(/[?.!]+$/, '').trim();
   }
 
-  // Prepositional match: "weather in Noida", "temperature for 201310", "weather of Delhi", "mausam in Delhi"
+  // Prepositional match: "weather in Noida", "temperature for 201310", "weather of Delhi", "mausam in Delhi", "मौसम दिल्ली में"
   const prepMatch = query.match(
     /\b(?:in|at|for|near|of|mein|me|ka|ki)\s+([a-zA-Z0-9\s,\-\p{sc=Devanagari}]+?)(?:\s+today|\s+now|\s+tomorrow|\s+ka|\s+ki|\s+mausam|\s+weather|\?|\.|$)/iu
   );
@@ -156,7 +229,7 @@ function extractWeatherLocation(message, history) {
     }
   }
 
-  // Reverse Hindi / Hinglish match: "Delhi ka mausam", "Noida mein weather", "Mumbai ka tapman"
+  // Reverse Hindi / Hinglish match: "Delhi ka mausam", "Noida mein weather", "Mumbai ka tapman", "दिल्ली का मौसम"
   const hindiLocMatch = query.match(
     /^([a-zA-Z0-9\s,\-\p{sc=Devanagari}]+?)\s+(?:ka|ki|me|mein|ke|का|की|में|के)\s+(?:mausam|weather|temperature|tapman|मौसम|तापमान|बारिश)/iu
   );
@@ -232,13 +305,14 @@ async function fetchLiveWeather(location) {
   }
 }
 
+
 export const config = {
   maxDuration: 60,
 };
 export const maxDuration = 60;
 
 /**
- * Vercel Serverless Function & Express Route Handler
+ * Vercel Serverless Function Handler
  * Endpoint: POST /api/chat
  */
 export default async function handler(req, res) {
@@ -256,25 +330,27 @@ export default async function handler(req, res) {
     });
   }
 
-  const llmConfig = getLLMConfig();
-
   // Health check endpoint (GET /api/chat)
   if (req.method === 'GET') {
+    let apiKey = process.env.GEMINI_API_KEY;
+    if (apiKey) {
+      apiKey = apiKey.trim().replace(/^["']|["']$/g, '');
+    }
+    const hasKey = Boolean(
+      apiKey &&
+        apiKey !== 'YOUR_GEMINI_API_KEY' &&
+        apiKey !== 'your_api_key_here'
+    );
     let availableModels = [];
     let listError = null;
-
-    if (llmConfig.hasApiKey) {
+    if (hasKey) {
       try {
-        const fetchRes = await fetch(`${llmConfig.url}/v1/models`, {
-          headers: { Authorization: `Bearer ${llmConfig.apiKey}` },
-          signal: AbortSignal.timeout(5000),
-        });
+        const fetchRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
         if (fetchRes.ok) {
           const data = await fetchRes.json();
-          availableModels = (data.data || [])
-            .filter((m) => m.type !== 'image')
-            .map((m) => m.id)
-            .slice(0, 30);
+          availableModels = (data.models || [])
+            .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
+            .map((m) => m.name.replace(/^models\//, ''));
         } else {
           listError = `HTTP ${fetchRes.status}: ${await fetchRes.text()}`;
         }
@@ -282,11 +358,10 @@ export default async function handler(req, res) {
         listError = err?.message || String(err);
       }
     }
-
     return res.status(200).json({
       status: 'ok',
-      hasApiKey: llmConfig.hasApiKey,
-      model: llmConfig.primaryModel,
+      hasApiKey: hasKey,
+      model: process.env.GEMINI_MODEL || 'gemini-flash-latest',
       availableModels,
       listError,
     });
@@ -299,8 +374,10 @@ export default async function handler(req, res) {
     });
   }
 
+  const modelErrors = [];
+
   try {
-    // Robust request body parsing
+    // Robust request body parsing (handles string or pre-parsed object)
     let body = req.body;
     if (typeof body === 'string') {
       try {
@@ -310,50 +387,14 @@ export default async function handler(req, res) {
       }
     }
 
-    const {
-      message,
-      history,
-      stream: wantsStream,
-      reasoningMode,
-      fileContext,
-      conversationId,
-    } = body || {};
+    const { message, history, stream: wantsStream, reasoningMode, fileContext, conversationId } = body || {};
     const safeHistory = sanitizeHistory(history);
     const authUser = extractAuthUser(req);
 
-    // 1. Validate that the message exists
-    if (!message || typeof message !== 'string' || !message.trim()) {
-      return res.status(400).json({
-        error: 'Message is required',
-        reply: 'Please provide a valid question.',
-      });
-    }
+    const sendReply = async (text) => {
+      const trimmed = cleanAssistantOutput(text || '');
 
-    const trimmedMessage = message.trim();
-    if (trimmedMessage.length > MAX_MESSAGE_LENGTH) {
-      return res.status(413).json({
-        error: 'Message is too long',
-        reply: `Please keep your message under ${MAX_MESSAGE_LENGTH} characters.`,
-      });
-    }
-
-    // 2. Verify server-side OmniRoute configuration
-    if (!llmConfig.hasApiKey) {
-      console.error('[OmniRoute Error]: OMNIROUTE_API_KEY is not configured in server environment variables.');
-      return res.status(500).json({
-        success: false,
-        error: {
-          code: 'SERVICE_UNAVAILABLE',
-          message: 'The AI assistant is temporarily unavailable. Please try again later.',
-          retryable: false,
-          details: process.env.NODE_ENV !== 'production' ? 'OMNIROUTE_API_KEY is not configured.' : undefined,
-        },
-        reply: 'The AI assistant is temporarily unavailable. Please try again later.',
-      });
-    }
-
-    // Helper to persist conversation turn
-    const persistTurn = async (botText) => {
+      // Persist messages if user is authenticated, conversationId exists, and conversation is owned by user
       if (authUser && conversationId) {
         try {
           const ownedConv = await db.getConversation(conversationId, authUser.id);
@@ -370,35 +411,28 @@ export default async function handler(req, res) {
               id: botMsgId,
               conversation_id: conversationId,
               role: 'model',
-              content: botText,
-              model: reasoningMode ? 'deep-thinking' : llmConfig.primaryModel,
+              content: trimmed,
+              model: reasoningMode ? 'deep-thinking' : configuredModel,
             });
 
             // Background auto memory extraction
-            extractMemoriesFromConversation(trimmedMessage, botText)
-              .then(async (extracted) => {
-                for (const item of extracted) {
-                  const memId = 'mem_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-                  await db.setMemory({
-                    id: memId,
-                    user_id: authUser.id,
-                    memory_key: item.key,
-                    memory_value: item.value,
-                    importance: item.importance || 1,
-                  });
-                }
-              })
-              .catch(() => {});
+            extractMemoriesFromConversation(trimmedMessage, trimmed).then(async (extracted) => {
+              for (const item of extracted) {
+                const memId = 'mem_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+                await db.setMemory({
+                  id: memId,
+                  user_id: authUser.id,
+                  memory_key: item.key,
+                  memory_value: item.value,
+                  importance: item.importance || 1,
+                });
+              }
+            }).catch(() => {});
           }
         } catch (dbErr) {
           console.warn('[Message persistence warning]:', dbErr.message);
         }
       }
-    };
-
-    const sendReply = async (text) => {
-      const trimmed = cleanAssistantOutput(text || '');
-      await persistTurn(trimmed);
 
       if (wantsStream) {
         if (typeof res.writeHead === 'function') {
@@ -419,6 +453,45 @@ export default async function handler(req, res) {
       }
       return res.status(200).json({ reply: trimmed });
     };
+
+    // 1. Validate that the message exists
+    if (!message || typeof message !== 'string' || !message.trim()) {
+      return res.status(400).json({
+        error: 'Message is required',
+        reply: 'Please provide a valid question.',
+      });
+    }
+
+    const trimmedMessage = message.trim();
+    if (trimmedMessage.length > MAX_MESSAGE_LENGTH) {
+      return res.status(413).json({
+        error: 'Message is too long',
+        reply: `Please keep your message under ${MAX_MESSAGE_LENGTH} characters.`,
+      });
+    }
+
+    // 2. Read GEMINI_API_KEY from the server environment
+    let apiKey = process.env.GEMINI_API_KEY;
+    if (apiKey) {
+      apiKey = apiKey.trim().replace(/^["']|["']$/g, '');
+    }
+    if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY' || apiKey === 'your_api_key_here') {
+      console.error('[Gemini Server Error]: GEMINI_API_KEY is not configured in server environment variables.');
+      return res.status(500).json({
+        success: false,
+        error: {
+          code: 'SERVICE_UNAVAILABLE',
+          message: 'The AI assistant is temporarily unavailable. Please try again later.',
+          retryable: false,
+          details: process.env.NODE_ENV !== 'production' ? 'GEMINI_API_KEY is not configured.' : undefined,
+        },
+        reply: 'The AI assistant is temporarily unavailable. Please try again later.',
+      });
+    }
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const rawModel = (process.env.GEMINI_MODEL || 'gemini-flash-latest').trim().replace(/^["']|["']$/g, '');
+    const configuredModel = rawModel.replace(/^models\//, '');
 
     // 3. Real-Time Weather Handling (City / ZIP / PIN code contextual lookup)
     const isWeather =
@@ -469,33 +542,29 @@ Task: Give a natural, friendly, and concise response.
 If the user asked in Hindi or Hinglish, answer in Hindi or Hinglish. If in English, answer in English.
 State the weather and temperature clearly, mention humidity, and append "*Source: Live Weather Observation*". Do NOT say you lack real-time access.`;
 
-          const reply = await sendChatCompletion({
-            messages: [
-              { role: 'system', content: SYSTEM_INSTRUCTION },
-              { role: 'user', content: weatherPrompt },
-            ],
-            temperature: 0.3,
-            maxTokens: 256,
+          const model = genAI.getGenerativeModel({
+            model: 'gemini-flash-latest',
+            systemInstruction: SYSTEM_INSTRUCTION,
           });
-
-          if (
-            reply &&
-            !reply.toLowerCase().includes("don't have access") &&
-            !reply.toLowerCase().includes('cannot provide')
-          ) {
+          const result = await model.generateContent(weatherPrompt);
+          const response = await result.response;
+          const reply = extractTextFromResponse(response);
+          if (reply && !reply.toLowerCase().includes("don't have access") && !reply.toLowerCase().includes("cannot provide")) {
             return sendReply(reply.trim());
           }
         } catch (weatherErr) {
-          console.warn('[Live Weather format fallback]:', weatherErr?.message || weatherErr);
+          console.warn('[Live Weather Gemini format fallback]:', weatherErr?.message || weatherErr);
         }
 
         return sendReply(directReply);
       }
+      // If live weather data is unavailable or non-locational, smoothly fall through to general knowledge pipeline
     }
 
     // 4. Intent Classification & Context Assembly (RAG + Live Web Search)
     const intent = classifyIntent(message);
 
+    // Contextual query incorporates recent user history for pronoun/reference resolution (e.g. "Now give me its formula sheet")
     let contextualQuery = message;
     if (safeHistory.length > 0) {
       const priorUserTurns = safeHistory
@@ -516,30 +585,24 @@ State the weather and temperature clearly, mention humidity, and append "*Source
       if (ragResult.contextText) {
         ragContext = ragResult.contextText;
       }
+      // If RAG retrieval was insufficient and query needs external info, fall back to web search
       if (!ragResult.isSufficient && (intent.needsCurrentInfo || !ragResult.contextText)) {
-        try {
-          const webResult = await searchWeb(message);
-          if (webResult.contextText) {
-            webContext = webResult.contextText;
-          }
-        } catch (searchErr) {
-          console.warn('[Web Search Fallback]:', searchErr.message);
-        }
-      }
-    } else if (intent.needsCurrentInfo) {
-      try {
         const webResult = await searchWeb(message);
         if (webResult.contextText) {
           webContext = webResult.contextText;
         }
-      } catch (searchErr) {
-        console.warn('[Web Search Fallback]:', searchErr.message);
+      }
+    } else if (intent.needsCurrentInfo) {
+      const webResult = await searchWeb(message);
+      if (webResult.contextText) {
+        webContext = webResult.contextText;
       }
     }
 
-    // Step B: Structured Context Assembly
+    // Step B: Structured Context Assembly (RAG + Web + User Memory + File Context)
     const contextSections = [];
 
+    // Inject user long-term memories if user is logged in
     if (authUser) {
       try {
         const memories = await db.getUserMemory(authUser.id);
@@ -552,6 +615,7 @@ State the weather and temperature clearly, mention humidity, and append "*Source
       }
     }
 
+    // Inject uploaded file context if present
     if (fileContext && typeof fileContext === 'string' && fileContext.trim()) {
       contextSections.push(
         `[ATTACHED FILE CONTEXT - analyze and reference accurately]:\n${fileContext.trim().slice(0, 15000)}`
@@ -575,10 +639,14 @@ State the weather and temperature clearly, mention humidity, and append "*Source
         ? `${trimmedMessage}\n\n${contextSections.join('\n\n')}`
         : trimmedMessage;
 
-    // 5. Construct OpenAI-compatible message list for OmniRoute
-    const messagesPayload = [{ role: 'system', content: SYSTEM_INSTRUCTION }];
-
+    // 5. Format chat history for Gemini multi-turn conversation
+    // Gemini SDK Rules:
+    // - History MUST start with role: 'user' (cannot start with initial bot greeting)
+    // - Turns must alternate strictly: 'user' -> 'model' -> 'user' -> 'model'
+    // - Must not end with 'user' when sendMessage(message) is appending the new user message
+    const formattedHistory = [];
     if (safeHistory.length > 0) {
+      // Exclude the current user message if it was already appended to history
       let items = [...safeHistory];
       if (
         items.length > 0 &&
@@ -588,81 +656,260 @@ State the weather and temperature clearly, mention humidity, and append "*Source
         items.pop();
       }
 
-      for (const item of items) {
-        if (item && item.text && item.text.trim()) {
-          messagesPayload.push({
-            role: item.sender === 'user' ? 'user' : 'assistant',
-            content: item.text.trim(),
-          });
+      // Filter valid non-empty items
+      const validItems = items.filter(
+        (it) => it && typeof it.text === 'string' && it.text.trim()
+      );
+
+      // Find first user turn to drop any initial greeting from bot
+      const firstUserIndex = validItems.findIndex((it) => it.sender === 'user');
+      if (firstUserIndex !== -1) {
+        let lastRole = null;
+        for (let i = firstUserIndex; i < validItems.length; i++) {
+          const item = validItems[i];
+          const role = item.sender === 'user' ? 'user' : 'model';
+          if (role !== lastRole) {
+            formattedHistory.push({
+              role,
+              parts: [{ text: item.text.trim() }],
+            });
+            lastRole = role;
+          }
+        }
+        // Ensure history ends with 'model' so that chat.sendMessage(message) provides the next 'user' turn
+        if (formattedHistory.length > 0 && formattedHistory[formattedHistory.length - 1].role === 'user') {
+          formattedHistory.pop();
         }
       }
     }
 
-    messagesPayload.push({
-      role: 'user',
-      content: effectiveUserMessage,
-    });
+    // Adaptive generation config dynamically scaling tokens to query complexity
+    const generationConfig = {
+      maxOutputTokens: intent.maxOutputTokens || (reasoningMode ? 4096 : 2048),
+      temperature: intent.complexity === 'SIMPLE' ? 0.2 : 0.4,
+    };
 
-    const temperature = intent.complexity === 'SIMPLE' ? 0.2 : 0.4;
-    const maxTokens = intent.maxOutputTokens || (reasoningMode ? 4096 : 2048);
+    // Candidate models to ensure resilience across API tiers
+    // When reasoningMode is requested, prioritize reasoning-capable models with higher depth
+    const candidateModels = (
+      reasoningMode
+        ? ['gemini-2.5-pro', configuredModel, 'gemini-2.5-flash', 'gemini-flash-latest']
+        : [configuredModel, 'gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.5-pro']
+    ).filter((m, idx, arr) => m && arr.indexOf(m) === idx);
 
-    // 6. Execute Chat via OmniRoute (Streaming or Non-Streaming)
-    if (wantsStream) {
+    let replyText = '';
+    let lastError = null;
+
+    // 6. Send the conversation/message to Gemini with transient retry
+    for (const modelName of candidateModels) {
+      let attempts = 0;
+      const maxAttempts = 2; // attempt 1 -> short delay on transient error -> attempt 2
+
+      while (attempts < maxAttempts) {
+        attempts++;
+        try {
+          let model;
+          if (intent.needsCurrentInfo) {
+            try {
+              model = genAI.getGenerativeModel({
+                model: modelName,
+                systemInstruction: SYSTEM_INSTRUCTION,
+                generationConfig,
+                tools: [{ googleSearch: {} }],
+              });
+            } catch {
+              model = genAI.getGenerativeModel({
+                model: modelName,
+                systemInstruction: SYSTEM_INSTRUCTION,
+                generationConfig,
+              });
+            }
+          } else {
+            model = genAI.getGenerativeModel({
+              model: modelName,
+              systemInstruction: SYSTEM_INSTRUCTION,
+              generationConfig,
+            });
+          }
+
+          if (wantsStream) {
+            let streamResult;
+            if (formattedHistory.length > 0) {
+              const chat = model.startChat({
+                history: formattedHistory,
+                generationConfig,
+              });
+              streamResult = await chat.sendMessageStream(effectiveUserMessage);
+            } else {
+              streamResult = await model.generateContentStream(effectiveUserMessage);
+            }
+
+            let streamStarted = false;
+            let streamedText = '';
+            for await (const chunk of streamResult.stream) {
+              const chunkText = chunk.text();
+              if (chunkText) {
+                streamedText += chunkText;
+                if (!streamStarted) {
+                  if (typeof res.writeHead === 'function') {
+                    res.writeHead(200, {
+                      'Content-Type': 'text/plain; charset=utf-8',
+                      'Transfer-Encoding': 'chunked',
+                      'Cache-Control': 'no-cache, no-transform',
+                      'X-Accel-Buffering': 'no',
+                    });
+                  }
+                  streamStarted = true;
+                }
+              }
+            }
+            if (streamStarted) {
+              const safeStreamedText = cleanAssistantOutput(streamedText);
+              if (safeStreamedText && typeof res.write === 'function') {
+                res.write(safeStreamedText);
+              }
+              if (typeof res.end === 'function') {
+                res.end();
+              }
+              return;
+            }
+          }
+
+          if (formattedHistory.length > 0) {
+            const chat = model.startChat({
+              history: formattedHistory,
+              generationConfig,
+            });
+            const result = await chat.sendMessage(effectiveUserMessage);
+            const response = await result.response;
+            replyText = extractTextFromResponse(response);
+          } else {
+            const result = await model.generateContent(effectiveUserMessage);
+            const response = await result.response;
+            replyText = extractTextFromResponse(response);
+          }
+
+          if (replyText) {
+            break;
+          }
+        } catch (err) {
+          lastError = err;
+          modelErrors.push(`${modelName} (attempt ${attempts}) -> ${err?.message || err}`);
+          console.warn(`[Gemini API] Model "${modelName}" attempt ${attempts} failed:`, err?.message || err);
+
+          // Guard against header corruption if stream already started
+          if (res.headersSent) {
+            if (typeof res.end === 'function') res.end();
+            return;
+          }
+
+          // Auth errors should fail immediately without retry
+          const isAuthError =
+            err?.message?.includes('API_KEY_INVALID') ||
+            err?.message?.includes('API key not valid');
+          if (isAuthError) {
+            throw err;
+          }
+
+          // Transient error check (429, 500, 502, 503, ECONNRESET, ETIMEDOUT)
+          const isTransient =
+            err?.status === 429 ||
+            err?.status === 500 ||
+            err?.status === 502 ||
+            err?.status === 503 ||
+            /RESOURCE_EXHAUSTED|quota|timeout|fetch failed|ECONNRESET|ETIMEDOUT/i.test(err?.message || '');
+
+          if (isTransient && attempts < maxAttempts) {
+            await new Promise((r) => setTimeout(r, 1200));
+            continue; // Retry once before switching model
+          }
+
+          break; // Move to next candidate model
+        }
+      }
+
+      if (replyText) {
+        break;
+      }
+    }
+
+    // Dynamic fallback model discovery if all static candidates failed
+    if (!replyText) {
       try {
-        await streamChatCompletion({
-          messages: messagesPayload,
-          reasoningMode,
-          temperature,
-          maxTokens,
-          res,
-          onComplete: async (finalText) => {
-            await persistTurn(finalText);
-          },
-        });
-        return;
-      } catch (streamErr) {
-        console.error('[Stream Error]:', streamErr.message);
-        if (res.headersSent) {
-          if (typeof res.end === 'function') res.end();
-          return;
+        const fetchRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+        if (fetchRes.ok) {
+          const data = await fetchRes.json();
+          const dynamicModels = (data.models || [])
+            .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
+            .map((m) => m.name.replace(/^models\//, ''))
+            .filter((m) => !candidateModels.includes(m));
+
+          for (const modelName of dynamicModels) {
+            try {
+              const model = genAI.getGenerativeModel({
+                model: modelName,
+                systemInstruction: SYSTEM_INSTRUCTION,
+                generationConfig,
+              });
+              if (formattedHistory.length > 0) {
+                const chat = model.startChat({ history: formattedHistory, generationConfig });
+                const result = await chat.sendMessage(effectiveUserMessage);
+                const response = await result.response;
+                replyText = extractTextFromResponse(response);
+              } else {
+                const result = await model.generateContent(effectiveUserMessage);
+                const response = await result.response;
+                replyText = extractTextFromResponse(response);
+              }
+
+              if (replyText) {
+                break;
+              }
+            } catch (err) {
+              lastError = err;
+              modelErrors.push(`${modelName} -> ${err?.message || err}`);
+            }
+          }
         }
-        // Fall back to non-streaming response if stream failed before headers were sent
+      } catch (dynamicErr) {
+        console.warn('Dynamic model fetch failed:', dynamicErr);
       }
     }
 
-    const replyText = await sendChatCompletion({
-      messages: messagesPayload,
-      reasoningMode,
-      temperature,
-      maxTokens,
-    });
+    // 7. Verify response extraction
+    if (!replyText) {
+      if (lastError) throw lastError;
+      return sendReply('I could not generate an answer for this prompt. Please try rephrasing or asking something else.');
+    }
 
+    // 8. Return response
     return sendReply(replyText);
   } catch (error) {
     const errorMsg = error?.message || 'Unknown error';
     const status = error?.status || 500;
-    console.error(`[Chat API Error] Status ${status}:`, errorMsg);
+    console.error(`[Gemini API Error] Status ${status}:`, errorMsg, 'Model trace:', modelErrors);
 
     let errorCode = 'MODEL_REQUEST_FAILED';
     let friendlyMessage = 'Sorry, I could not generate a response right now. Please try again.';
     let isRetryable = true;
 
-    if (errorMsg.includes('API_KEY') || errorMsg.includes('invalid_api_key')) {
+    if (errorMsg.includes('API_KEY_INVALID') || errorMsg.includes('API key not valid')) {
       errorCode = 'INVALID_API_KEY';
+      // Server log keeps technical detail, but user sees a clean non-technical message
       friendlyMessage = 'AI service is temporarily unavailable. Please try again in a moment.';
       isRetryable = false;
-    } else if (errorMsg.includes('rate_limit') || errorMsg.includes('quota') || status === 429) {
+    } else if (errorMsg.includes('RESOURCE_EXHAUSTED') || errorMsg.includes('quota') || status === 429) {
       errorCode = 'RATE_LIMIT_EXCEEDED';
       friendlyMessage = 'The AI service is experiencing high traffic right now. Please wait a moment and try again.';
       isRetryable = true;
-    } else if (
-      errorMsg.includes('fetch failed') ||
-      errorMsg.includes('ECONNREFUSED') ||
-      errorMsg.includes('ETIMEDOUT')
-    ) {
+    } else if (errorMsg.includes('fetch failed') || errorMsg.includes('ECONNREFUSED') || errorMsg.includes('ETIMEDOUT')) {
       errorCode = 'NETWORK_TIMEOUT';
       friendlyMessage = 'Network connection issue connecting to the AI service. Please try again.';
       isRetryable = true;
+    } else if (errorMsg.includes('SAFETY') || errorMsg.includes('HARM_CATEGORY')) {
+      errorCode = 'SAFETY_POLICY_BLOCK';
+      friendlyMessage = 'The response was blocked by safety policy filters. Please rephrase your query.';
+      isRetryable = false;
     }
 
     if (res.headersSent) {
