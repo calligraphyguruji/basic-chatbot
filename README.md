@@ -15,8 +15,11 @@ Created and owned by **Mr. Aman Mishra**.
 
 ## 🚀 Key Features
 
-### 1. Direct Server-Side Google Gemini AI & Real-Time Streaming
-- Direct connection to Google Gemini API using `@google/generative-ai` with chunked stream response delivery.
+### 1. Direct Server-Side Google Gemini AI & Ultra-Low-Latency Streaming
+- Direct connection to Google Gemini API using `@google/generative-ai` with immediate chunk-by-chunk stream forwarding (`res.write(chunkText)`) for minimal Time To First Token (TTFT).
+- In-memory `GoogleGenerativeAI` client caching to prevent repetitive client allocations and SSL handshakes across requests.
+- Intelligent search bypass: general definitions, math, and concepts execute directly with zero retrieval latency, reserving web search and RAG strictly for time-sensitive or curriculum topics.
+- Redundant search prevention: avoids duplicate search passes when external context has already been gathered.
 - Server-side credentials isolation: `GEMINI_API_KEY` is strictly held on the server/backend and never exposed in client bundles.
 - Resilient model fallback: cascades across Gemini models (`gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-flash-latest`) with transient error retry.
 

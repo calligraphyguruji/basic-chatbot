@@ -6,6 +6,15 @@ import { extractAuthUser } from './lib/auth.js';
 import { db } from './lib/db.js';
 import { extractMemoriesFromConversation, formatMemoriesForPrompt } from './lib/memory.js';
 
+// Cache GoogleGenerativeAI client instances by API key to avoid repeated allocation
+const genAIClientCache = new Map();
+function getGenAIClient(apiKey) {
+  if (!genAIClientCache.has(apiKey)) {
+    genAIClientCache.set(apiKey, new GoogleGenerativeAI(apiKey));
+  }
+  return genAIClientCache.get(apiKey);
+}
+
 const MAX_MESSAGE_LENGTH = Number(process.env.MAX_MESSAGE_LENGTH || 4000);
 const MAX_HISTORY_TURNS = Number(process.env.MAX_HISTORY_TURNS || 12);
 const MAX_HISTORY_ITEM_LENGTH = Number(process.env.MAX_HISTORY_ITEM_LENGTH || 2000);
@@ -391,48 +400,51 @@ export default async function handler(req, res) {
     const safeHistory = sanitizeHistory(history);
     const authUser = extractAuthUser(req);
 
+    const persistAssistantMessage = async (text) => {
+      if (!authUser || !conversationId) return;
+      try {
+        const ownedConv = await db.getConversation(conversationId, authUser.id);
+        if (ownedConv) {
+          const userMsgId = 'msg_' + Date.now() + '_u';
+          const botMsgId = 'msg_' + (Date.now() + 1) + '_b';
+          await db.createMessage({
+            id: userMsgId,
+            conversation_id: conversationId,
+            role: 'user',
+            content: trimmedMessage,
+          });
+          await db.createMessage({
+            id: botMsgId,
+            conversation_id: conversationId,
+            role: 'model',
+            content: text,
+            model: reasoningMode ? 'deep-thinking' : configuredModel,
+          });
+
+          // Background auto memory extraction
+          extractMemoriesFromConversation(trimmedMessage, text).then(async (extracted) => {
+            for (const item of extracted) {
+              const memId = 'mem_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+              await db.setMemory({
+                id: memId,
+                user_id: authUser.id,
+                memory_key: item.key,
+                memory_value: item.value,
+                importance: item.importance || 1,
+              });
+            }
+          }).catch(() => {});
+        }
+      } catch (dbErr) {
+        console.warn('[Message persistence warning]:', dbErr.message);
+      }
+    };
+
     const sendReply = async (text) => {
       const trimmed = cleanAssistantOutput(text || '');
 
-      // Persist messages if user is authenticated, conversationId exists, and conversation is owned by user
-      if (authUser && conversationId) {
-        try {
-          const ownedConv = await db.getConversation(conversationId, authUser.id);
-          if (ownedConv) {
-            const userMsgId = 'msg_' + Date.now() + '_u';
-            const botMsgId = 'msg_' + (Date.now() + 1) + '_b';
-            await db.createMessage({
-              id: userMsgId,
-              conversation_id: conversationId,
-              role: 'user',
-              content: trimmedMessage,
-            });
-            await db.createMessage({
-              id: botMsgId,
-              conversation_id: conversationId,
-              role: 'model',
-              content: trimmed,
-              model: reasoningMode ? 'deep-thinking' : configuredModel,
-            });
-
-            // Background auto memory extraction
-            extractMemoriesFromConversation(trimmedMessage, trimmed).then(async (extracted) => {
-              for (const item of extracted) {
-                const memId = 'mem_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-                await db.setMemory({
-                  id: memId,
-                  user_id: authUser.id,
-                  memory_key: item.key,
-                  memory_value: item.value,
-                  importance: item.importance || 1,
-                });
-              }
-            }).catch(() => {});
-          }
-        } catch (dbErr) {
-          console.warn('[Message persistence warning]:', dbErr.message);
-        }
-      }
+      // Persist messages if user is authenticated and conversationId exists
+      persistAssistantMessage(trimmed).catch(() => {});
 
       if (wantsStream) {
         if (typeof res.writeHead === 'function') {
@@ -489,7 +501,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const genAI = new GoogleGenerativeAI(apiKey);
+    const genAI = getGenAIClient(apiKey);
     const rawModel = (process.env.GEMINI_MODEL || 'gemini-flash-latest').trim().replace(/^["']|["']$/g, '');
     const configuredModel = rawModel.replace(/^models\//, '');
 
@@ -709,7 +721,8 @@ State the weather and temperature clearly, mention humidity, and append "*Source
         attempts++;
         try {
           let model;
-          if (intent.needsCurrentInfo) {
+          // If web context is already retrieved and injected, skip redundant googleSearch tool to minimize TTFT
+          if (intent.needsCurrentInfo && !webContext) {
             try {
               model = genAI.getGenerativeModel({
                 model: modelName,
@@ -734,6 +747,7 @@ State the weather and temperature clearly, mention humidity, and append "*Source
 
           if (wantsStream) {
             let streamResult;
+            const tGeminiStart = Date.now();
             if (formattedHistory.length > 0) {
               const chat = model.startChat({
                 history: formattedHistory,
@@ -760,17 +774,25 @@ State the weather and temperature clearly, mention humidity, and append "*Source
                     });
                   }
                   streamStarted = true;
+                  if (process.env.NODE_ENV !== 'production') {
+                    console.log(`[PERF] TTFT: ${Date.now() - tGeminiStart}ms (model: ${modelName})`);
+                  }
+                }
+                if (typeof res.write === 'function') {
+                  res.write(chunkText);
+                  if (typeof res.flush === 'function') {
+                    res.flush();
+                  }
                 }
               }
             }
+
             if (streamStarted) {
-              const safeStreamedText = cleanAssistantOutput(streamedText);
-              if (safeStreamedText && typeof res.write === 'function') {
-                res.write(safeStreamedText);
-              }
               if (typeof res.end === 'function') {
                 res.end();
               }
+              const cleanOutput = cleanAssistantOutput(streamedText);
+              persistAssistantMessage(cleanOutput).catch(() => {});
               return;
             }
           }
